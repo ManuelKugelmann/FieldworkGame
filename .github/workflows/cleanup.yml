@@ -1,0 +1,41 @@
+name: Cleanup branch preview
+
+# When a branch is deleted, remove its subfolder from gh-pages.
+# NOTE: `delete` events only run the workflow file as it exists on the
+# repository's DEFAULT branch, so this takes effect once merged to the default
+# branch. main and gh-pages are never cleaned up.
+
+on: delete
+
+concurrency:
+  group: gh-pages-writer
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.ref_type == 'branch' && github.event.ref != 'main' && github.event.ref != 'gh-pages'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+        continue-on-error: true   # gh-pages may not exist yet (nothing to clean)
+
+      - name: Remove deleted branch's subfolder
+        run: |
+          slug="$(echo "${{ github.event.ref }}" | sed 's/[^a-zA-Z0-9]/-/g')"
+          if [ -d "$slug" ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git rm -rf -- "$slug"
+            git commit -m "cleanup preview for deleted branch ${{ github.event.ref }}"
+            git push origin gh-pages
+            echo "Removed preview subfolder '$slug'."
+          else
+            echo "No preview subfolder '$slug' to remove — skipping."
+          fi

@@ -1,0 +1,11 @@
+{
+  "//": "Runtime-only config for the headless tsx scripts (smoke/sweep). boardgame.io ships its subpaths via the legacy `module` field, which the tsx/node resolver does not follow (it probes for index.jsx and fails). These aliases point the subpaths at the CJS build so the scripts run. tsx does not type-check, so the typeless CJS target is fine here; `npm run typecheck` uses the base config, where tsc resolves the real .d.ts subpaths natively, and Vite resolves the ESM build for the browser bundle.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "boardgame.io/client": ["node_modules/boardgame.io/dist/cjs/client.js"],
+      "boardgame.io/core": ["node_modules/boardgame.io/dist/cjs/core.js"]
+    }
+  }
+}
