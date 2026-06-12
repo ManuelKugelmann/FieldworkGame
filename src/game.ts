@@ -309,8 +309,9 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
 };
 
 
-// ---- A* (Dijkstra over the weighted move-graph) → first step toward the nearest goal cell ----
-function stepToward(G: GState, from: number, goal: (t: Tile) => boolean): number {
+// ---- Dijkstra over the weighted move-graph (foot or boat) → first step toward the nearest goal cell ----
+function stepToward(G: GState, from: number, goal: (t: Tile) => boolean, boat: boolean): number {
+  const ok = boat ? canBoat : canMove, wt = boat ? boatCost : cost;
   const dist = new Map<number, number>([[from, 0]]), prev = new Map<number, number>();
   const pq: [number, number][] = [[0, from]];
   while (pq.length) {
@@ -318,32 +319,56 @@ function stepToward(G: GState, from: number, goal: (t: Tile) => boolean): number
     const [d, u] = pq.splice(bi, 1)[0];
     if (d > (dist.get(u) ?? Infinity)) continue;
     if (u !== from && goal(G.map[u])) { let c = u; while (prev.get(c) !== from) c = prev.get(c)!; return c; }
-    for (const v of nbrs(u)) if (canMove(G.map, u, v)) { const nd = d + cost(G.map, u, v); if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); prev.set(v, u); pq.push([nd, v]); } }
+    for (const v of nbrs(u)) if (ok(G.map, u, v)) { const nd = d + wt(G.map, u, v); if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); prev.set(v, u); pq.push([nd, v]); } }
   }
   return -1;
 }
 const forageTarget = (t: Tile) => t.finds.length > 0 || (!t.revealed && t.richness > 0);  // unclaimed token, or unexplored find-bearing terrain
-// heuristic policy: publish at a hub; else explore+catalogue at random until carry is full, then A* to the nearest hub
-export function botAction(G: GState, ctx: any, rand: () => number) {
+// how many goal-cells are reachable from `from` on the foot vs boat graph (used to decide if grabbing the shared boat is worth it)
+function reachGoals(G: GState, from: number, boat: boolean, goal: (t: Tile) => boolean): number {
+  const ok = boat ? canBoat : canMove, seen = new Set<number>([from]), st = [from]; let n = 0;
+  while (st.length) { const u = st.pop()!; if (goal(G.map[u])) n++; for (const v of nbrs(u)) if (!seen.has(v) && ok(G.map, u, v)) { seen.add(v); st.push(v); } }
+  return n;
+}
+const manhattan = (a: number, b: number) => Math.abs(((a / N) | 0) - ((b / N) | 0)) + Math.abs((a % N) - (b % N));
+const goalCells = (G: GState, goal: (t: Tile) => boolean) => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (goal(G.map[i])) a.push(i); return a; };
+const nearestDist = (cells: number[], from: number) => cells.reduce((m, c) => Math.min(m, manhattan(from, c)), Infinity);
+// car: board a co-located idle car / drive to the road cell nearest the goal / dismount once roads stop helping
+function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: unknown[] } | null {
+  const p = G.players[ctx.currentPlayer]; if (p.ap < 1 || !goals.length) return null;
+  const here = nearestDist(goals, p.pos);
+  if (here < 3) return null;   // only bother with the car when the goal is far enough that roads save real distance
+  const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
+  if (myCar) {                                                          // driving → hop to the best closer road cell, else step out
+    let best = -1, bd = here;
+    for (const c of roadReach(G.map, myCar.pos, CAR_STEPS)) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
+    return best >= 0 ? { move: 'drive', args: [best] } : { move: 'leave', args: [] };
+  }
+  const vi = G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null);   // parked car underfoot → board if roads lead closer
+  if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
+  return null;
+}
+// heuristic policy: publish at a hub; grab the boat when it unlocks water-bound forage; drive roads + boat water toward the goal
+export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
   if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...PATTERNS].sort((a, b) => b.prestige - a.prestige)) if (assemble(pat.name, p.samples, cit)) return { move: 'publish', args: [pat.name] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (p.ap >= 1 && isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money
-  if (p.samples.length >= CARRY_SLOTS) {                       // inventory full → A* to nearest hub to publish
-    if (!isHub(tile)) {
-      const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
-      if (myCar && p.ap >= 1) { const hub = roadReach(G.map, myCar.pos, CAR_STEPS).find(c => isHub(G.map[c])); if (hub !== undefined) return { move: 'drive', args: [hub] }; }  // driving: zip to a hub on roads
-      else if (!myCar) { const vi = G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && roadReach(G.map, v.pos, CAR_STEPS).some(c => isHub(G.map[c]))); if (vi >= 0) return { move: 'board', args: [vi] }; }  // a car is here and a hub is drivable → hop in
-      const nx = stepToward(G, p.pos, isHub);
-      if (nx >= 0) { if (p.ap >= cost(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // hub reachable — walk (or wait for AP next turn)
-      else if (p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };               // genuinely no hub reachable → fly home
-    }
-  } else {                                                     // room left → claim a token here, else A* to nearest unexplored/unclaimed
-    if (p.ap >= 1 && tile.finds.length) return { move: 'catalogue', args: [0] };
-    const nx = stepToward(G, p.pos, forageTarget); if (nx >= 0 && p.ap >= cost(G.map, p.pos, nx)) return { move: 'move', args: [nx] };
-    const opts = nbrs(p.pos).filter(t => canMove(G.map, p.pos, t) && p.ap >= cost(G.map, p.pos, t));  // fallback: don't stall
-    if (opts.length) return { move: 'move', args: [opts[Math.floor(rand() * opts.length)]] };
+  if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
+    return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
+  const full = p.samples.length >= CARRY_SLOTS;
+  if (!full && p.ap >= 1 && tile.finds.length) return { move: 'catalogue', args: [0] };   // claim a token underfoot
+  const goalPred = full ? isHub : forageTarget;   // full carry → head to a hub; else explore/forage
+  if (!(full && isHub(tile))) {
+    const goals = goalCells(G, goalPred);
+    const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
+    const nx = stepToward(G, p.pos, goalPred, p.boat);                                      // foot/boat: weighted step toward the goal
+    if (nx >= 0) { if (p.ap >= (p.boat ? boatCost : cost)(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // reachable — step now, else wait for AP next turn
+    else if (full && p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };  // genuinely no hub reachable → fly home
   }
+  const can = p.boat ? canBoat : canMove, wt = p.boat ? boatCost : cost;                    // fallback: any affordable step (don't stall)
+  const opts = nbrs(p.pos).filter(t => can(G.map, p.pos, t) && p.ap >= wt(G.map, p.pos, t));
+  if (!full && opts.length) return { move: 'move', args: [opts[Math.floor(rand() * opts.length)]] };
   return { event: 'endTurn' };
 }
 

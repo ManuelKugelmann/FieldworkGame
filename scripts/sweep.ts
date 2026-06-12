@@ -8,7 +8,7 @@ import type { GState } from '../src/game';
 const MATCHES = Number(process.argv[2] ?? 50);
 const STEP_CAP = 20000;
 
-const tally = { publishes: 0, cited: 0, drives: 0, helilifts: 0, gear: 0 };
+const tally = { publishes: 0, cited: 0, drives: 0, boats: 0, helilifts: 0, gear: 0 };
 const winScores: number[] = [];
 const spreads: number[] = [];
 
@@ -33,6 +33,7 @@ for (let i = 0; i < MATCHES; i++) {
     else if (line.startsWith('drive')) tally.drives++;
     else if (line.startsWith('helilift')) tally.helilifts++;
     else if (line.startsWith('buy gear')) tally.gear++;
+    if (line.includes('⛵')) tally.boats++;   // boating steps (water/brook crossings)
   }
   const scores = (final.ctx.gameover as { scores: Record<string, number> }).scores;
   const vals = Object.values(scores);
@@ -46,6 +47,7 @@ console.log(`sweep over ${n} matches (per-match averages):`);
 console.log(`  publishes : ${(tally.publishes / n).toFixed(2)}`);
 console.log(`  cited     : ${(tally.cited / n).toFixed(2)}`);
 console.log(`  drives    : ${(tally.drives / n).toFixed(2)}`);
+console.log(`  boats     : ${(tally.boats / n).toFixed(2)}`);
 console.log(`  helilifts : ${(tally.helilifts / n).toFixed(2)}`);
 console.log(`  gear buys : ${(tally.gear / n).toFixed(2)}`);
 console.log(`  winner VP : ${avg(winScores).toFixed(1)}  (spread ${avg(spreads).toFixed(1)})`);
