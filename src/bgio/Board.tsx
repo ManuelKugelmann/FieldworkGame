@@ -68,9 +68,9 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
       <div className="toasts">
         {toasts.map(({ id, t }) => <div key={id} className={`toast ${t.kind}`}>{t.text}</div>)}
       </div>
-      <h1>Expedition: Verdant Prime</h1>
+      <h1>Expedition: Verdant Prime — bgio player frontend</h1>
       <div className="sub">
-        bgio frontend — full state inspection (Debug panel ↘) &amp; click-to-play ·{' '}
+        click-to-play · the <strong>Debug Inspector</strong> (boardgame.io state browser / replay) is docked on the right → ·{' '}
         <a href="index.html">lean canvas viewer ↗</a>
       </div>
       <div className="controls">
