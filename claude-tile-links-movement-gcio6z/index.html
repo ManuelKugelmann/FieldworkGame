@@ -21,9 +21,10 @@
       }
       button:hover { background: #1d3d22; }
       button:disabled { opacity: .4; cursor: default; }
-      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; }
-      #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; }
-      .side { min-width: 16rem; max-width: 22rem; }
+      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+      .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+      #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
+      .side { flex: 0 1 22rem; min-width: 16rem; max-width: 22rem; }
       .panel { margin-bottom: 1rem; }
       .panel h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
       #actions { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -38,8 +39,8 @@
       .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
       #status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; min-height: 1.2rem; }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-BPjMJ7Aq.js"></script>
-    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-BQJ3HyJS.js">
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-C8KKduzX.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-BQrc5N2_.js">
   </head>
   <body>
     <h1>Expedition: Verdant Prime</h1>
@@ -51,7 +52,7 @@
       <button id="reset">New match</button>
     </div>
     <div class="cols">
-      <div>
+      <div class="boardwrap">
         <canvas id="board"></canvas>
         <div class="legend" id="legend"></div>
       </div>
