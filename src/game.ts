@@ -142,16 +142,17 @@ function genOnce(seed: number) {
   const cand = allRiver.filter(i => i !== ctr);                    // exactly 2 foot crossings on random river tiles
   for (let k = 0; k < 2 && cand.length; k++) { const i = cand.splice(Math.floor(rand() * cand.length), 1)[0]; g[i].bridge = 'foot'; bridges.push(i); }
 
-  // roads: ONE connected edge-graph laid as an OVERLAY on a land base (grass/wild/rock); a road cell = one carrying a road edge
+  // roads: built OUTWARD from the central bridge (overlay on a land base grass/wild/rock); a road cell = one carrying a road edge
   const roadBase = (): Terrain => (['grassland', 'wild', 'rocky'] as Terrain[])[Math.floor(rand() * 3)];
-  const baseRow = (bridges[0] / N) | 0, bcol = bridges[0] % N, anchor = ix(baseRow, 0); set(anchor, roadBase());   // build the road from the left edge…
-  let prev = anchor;
-  for (let c = 1; c < bcol; c++) { const i = ix(baseRow, c); if (g[i] && g[i].terrain === 'water') break; if (!g[i]) set(i, roadBase()); link(prev, i); prev = i; }
-  link(prev, bridges[0]);                                            // road onto the central bridge (W edge)
-  const eastC = bcol + 1; if (eastC < N && !g[ix(baseRow, eastC)]) { set(ix(baseRow, eastC), roadBase()); link(bridges[0], ix(baseRow, eastC)); }
-  const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].roads !== 0) a.push(i); return a; };
-  const branchN = 3 + Math.round((N - 10) / 2);   // more, longer road branches on bigger boards
-  for (let b = 0; b < branchN; b++) { const rc = roadCells(); let i = rc[Math.floor(rand() * rc.length)]; for (let s = 0; s < 5; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, roadBase()); link(i, j); i = j; } }
+  const baseRow = (bridges[0] / N) | 0, bcol = bridges[0] % N;
+  for (const dd of [-1, 1]) {                                         // flank the bridge W & E to span both banks (the river crossing)
+    const c = bcol + dd; if (c < 0 || c >= N) continue;
+    const i = ix(baseRow, c); if (g[i] && g[i].terrain === 'water') continue;
+    if (!g[i]) set(i, roadBase()); link(bridges[0], i);
+  }
+  const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].roads !== 0 && !g[i].bridge) a.push(i); return a; };
+  const branchN = 4 + Math.round((N - 10) / 2);   // road branches grown outward in all directions from the centre
+  for (let b = 0; b < branchN; b++) { const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)]; const len = 4 + Math.floor(rand() * 4); for (let s = 0; s < len; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, roadBase()); link(i, j); i = j; } }
 
   // flood wild, carve forest + rocky + grassland (all passable land; rocky moves at 2 AP just like wild, bushwhack)
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'wild');
@@ -181,8 +182,8 @@ function genOnce(seed: number) {
     for (const v of nbrs(u)) if (!bseen.has(v) && passable(u, v)) { bseen.add(v); bq.push(v); }
   }
   for (let i = 0; i < N * N; i++) if (isLand(i) && g[i].roads === 0 && !keepLand.has(i)) set(i, 'void');   // never void a road cell
-  // …but put the BASE hub on the most central road cell (a land road, not a bridge), not the edge
-  let base = anchor, bd = Infinity;
+  // the BASE hub sits on the most central land road cell (the road is grown from the bridge, so this is right by the centre)
+  let base = bridges[0], bd = Infinity;
   for (let i = 0; i < N * N; i++) if (g[i].roads !== 0 && !g[i].bridge) { const d = dc(i); if (d < bd) { bd = d; base = i; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
