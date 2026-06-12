@@ -6,11 +6,15 @@ export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
 export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base, remote base (frontier hub), village (market)
-export interface Tile { terrain: Terrain; bridge?: Bridge; arm?: boolean; roads: number; paths: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; }  // roads = bitmask N1 E2 S4 W8
+export type EquipKind = 'gear';                       // m4 entity: gear cached on a tile (droppable/pickup-able)
+export interface Equip { kind: EquipKind; }
+export interface Vehicle { pos: number; driver: string | null; }  // car: a positioned entity you board/leave; drive moves both
+export interface Tile { terrain: Terrain; bridge?: Bridge; arm?: boolean; roads: number; paths: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; }  // roads = bitmask N1 E2 S4 W8
 export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; gear: number; }  // gear = catalogue-roll bonus
 export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
+  vehicles: Vehicle[];                                     // shared cars on the board (start at base)
   pools: Partial<Record<Terrain, Discovery[]>>;
   events: string[]; monsoon: number; epilogue: boolean; labLeft: number; log: string[];   // epilogue = indoor lab season
 }
@@ -72,7 +76,7 @@ function compTerrain(map: Tile[], pred: (t: Tile) => boolean) {       // plain 4
 
 function genOnce(seed: number) {
   const rand = prng(seed), g: Tile[] = new Array(N * N).fill(null as any);
-  const set = (i: number, t: Terrain, bridge?: Bridge) => { g[i] = { terrain: t, bridge, roads: 0, paths: 0, richness: RICH[t], revealed: false, finds: [] }; };
+  const set = (i: number, t: Terrain, bridge?: Bridge) => { g[i] = { terrain: t, bridge, roads: 0, paths: 0, richness: RICH[t], revealed: false, finds: [], equipment: [] }; };
   const link = (a: number, b: number) => { g[a].roads |= dirBit(a, b); g[b].roads |= dirBit(b, a); };   // road edge
   const linkP = (a: number, b: number) => { g[a].paths |= dirBit(a, b); g[b].paths |= dirBit(b, a); };  // foot edge
   const mkArm = (i: number) => { set(i, 'water'); g[i].arm = true; };   // thin side-arm cell
@@ -183,19 +187,45 @@ function reveal(G: GState, t: number, random: any) {
   G.log.push(`reveal ${t} (${tile.terrain}): ${tile.finds.length}`);
 }
 
+const myVehicle = (G: GState, id: string) => G.vehicles.find(v => v.driver === id);
 const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   const p = G.players[ctx.currentPlayer];
   if (G.epilogue || !nbrs(p.pos).includes(t) || !canMove(G.map, p.pos, t)) return INVALID_MOVE;
   const c = cost(G.map, p.pos, t);
   if (p.ap < c) return INVALID_MOVE;
+  const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
   p.ap -= c; p.pos = t; reveal(G, t, random);
   G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap)`);
 };
 const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (road edges only)
-  const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || p.ap < 1 || !roadReach(G.map, p.pos, CAR_STEPS).includes(dest)) return INVALID_MOVE;
-  p.ap -= 1; p.pos = dest; reveal(G, dest, random);
+  const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
+  if (G.epilogue || p.ap < 1 || !car || !roadReach(G.map, car.pos, CAR_STEPS).includes(dest)) return INVALID_MOVE;
+  p.ap -= 1; p.pos = dest; car.pos = dest; reveal(G, dest, random);   // player + car travel together
   G.log.push(`drive→${dest}`);
+};
+const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into a co-located, unoccupied car (free)
+  const p = G.players[ctx.currentPlayer], car = G.vehicles[v];
+  if (G.epilogue || !car || car.pos !== p.pos || car.driver !== null) return INVALID_MOVE;
+  car.driver = ctx.currentPlayer;
+  G.log.push(`P${ctx.currentPlayer} board car@${car.pos}`);
+};
+const leave: Move<GState> = ({ G, ctx }) => {   // step out; the car stays where it is (free)
+  const car = myVehicle(G, ctx.currentPlayer);
+  if (G.epilogue || !car) return INVALID_MOVE;
+  car.driver = null;
+  G.log.push(`P${ctx.currentPlayer} leave car@${car.pos}`);
+};
+const drop: Move<GState> = ({ G, ctx }) => {   // cache a gear level on the current tile (free)
+  const p = G.players[ctx.currentPlayer];
+  if (G.epilogue || p.gear < 1) return INVALID_MOVE;
+  p.gear -= 1; G.map[p.pos].equipment.push({ kind: 'gear' });
+  G.log.push(`P${ctx.currentPlayer} drop gear@${p.pos}`);
+};
+const pickup: Move<GState> = ({ G, ctx }) => {   // reclaim cached gear from the current tile (free, up to GEAR_MAX)
+  const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, idx = eq.findIndex(e => e.kind === 'gear');
+  if (G.epilogue || idx < 0 || p.gear >= GEAR_MAX) return INVALID_MOVE;
+  eq.splice(idx, 1); p.gear += 1;
+  G.log.push(`P${ctx.currentPlayer} pickup gear@${p.pos}`);
 };
 
 // ---- research set-patterns. assemble() uses owned samples first, cites others' published pools for any shortfall ----
@@ -273,8 +303,9 @@ export function botAction(G: GState, ctx: any, rand: () => number) {
   if (p.ap >= 1 && isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money
   if (p.samples.length >= CARRY_SLOTS) {                       // inventory full → A* to nearest hub to publish
     if (!isHub(tile)) {
-      const hub = roadReach(G.map, p.pos, CAR_STEPS).find(c => isHub(G.map[c]));   // car: zip to a hub on roads
-      if (hub !== undefined && p.ap >= 1) return { move: 'drive', args: [hub] };
+      const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
+      if (myCar && p.ap >= 1) { const hub = roadReach(G.map, myCar.pos, CAR_STEPS).find(c => isHub(G.map[c])); if (hub !== undefined) return { move: 'drive', args: [hub] }; }  // driving: zip to a hub on roads
+      else if (!myCar) { const vi = G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && roadReach(G.map, v.pos, CAR_STEPS).some(c => isHub(G.map[c]))); if (vi >= 0) return { move: 'board', args: [vi] }; }  // a car is here and a hub is drivable → hop in
       const nx = stepToward(G, p.pos, isHub);
       if (nx >= 0) { if (p.ap >= cost(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // hub reachable — walk (or wait for AP next turn)
       else if (p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };               // genuinely no hub reachable → fly home
@@ -298,6 +329,7 @@ const helilift: Move<GState> = ({ G, ctx }) => {   // airlift to the main hub; p
   const p = G.players[ctx.currentPlayer];
   if (G.epilogue || p.ap < 1 || p.pos === G.base) return INVALID_MOVE;
   p.ap -= 1;
+  const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // airlift leaves the car behind
   const pay = Math.min(p.money, HELILIFT_COST); p.money -= pay;
   const neg = Math.ceil((HELILIFT_COST - pay) / 4);   // 4$ ≈ 1 prestige (matches money→VP rate)
   if (neg > 0) p.prestige -= neg;                      // negative-prestige tokens (reputation hit)
@@ -307,10 +339,15 @@ const helilift: Move<GState> = ({ G, ctx }) => {   // airlift to the main hub; p
 export const enumerate = (G: GState, ctx: any) => {
   const p = G.players[ctx.currentPlayer], out: any[] = [], tile = G.map[p.pos];
   if (!G.epilogue) {                                                  // field season
+    const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
     nbrs(p.pos).forEach(t => { if (canMove(G.map, p.pos, t) && p.ap >= cost(G.map, p.pos, t)) out.push({ move: 'move', args: [t] }); });
-    if (p.ap >= 1) roadReach(G.map, p.pos, CAR_STEPS).forEach(d => out.push({ move: 'drive', args: [d] }));
+    if (p.ap >= 1 && myCar) roadReach(G.map, myCar.pos, CAR_STEPS).forEach(d => out.push({ move: 'drive', args: [d] }));
+    G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
+    if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1 && p.samples.length < CARRY_SLOTS) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));
     if (p.ap >= 1 && isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) out.push({ move: 'buy', args: [] });
+    if (p.gear >= 1) out.push({ move: 'drop', args: [] });
+    if (tile.equipment.some(e => e.kind === 'gear') && p.gear < GEAR_MAX) out.push({ move: 'pickup', args: [] });
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   if (p.ap >= 1 && (G.epilogue || isHub(tile))) { const cit = citablePool(G, ctx.currentPlayer); PATTERNS.forEach(pat => { if (assemble(pat.name, p.samples, cit)) out.push({ move: 'publish', args: [pat.name] }); }); }  // lab research = publish anywhere
@@ -359,11 +396,12 @@ export const Expedition: Game<GState> = {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0 }])),
       map, cols: N, rows: N, base: start,
+      vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
       pools: { road: buildPool('road'), wild: buildPool('wild'), forest: buildPool('forest') },
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
-  moves: { move, catalogue, publish, buy, drive, helilift },
+  moves: { move, catalogue, publish, buy, drive, helilift, board, leave, drop, pickup },
   turn: {
     onBegin: ({ G, ctx, random }) => {
       if (!G.epilogue) {
