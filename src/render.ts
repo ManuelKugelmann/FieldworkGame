@@ -42,7 +42,7 @@ export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#d8b15a', zoo: '#e07a6a', bot: '#7ad07a', arch: '#9a8ad0' };
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
-  road: '#5b5340', grassland: '#5d6e3a', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
+  grassland: '#5d6e3a', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
 };
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
@@ -106,6 +106,7 @@ export function actionLabel(a: Action, tile: Tile): string | null {
 export function describeTile(G: GState, i: number): string {
   const t = G.map[i];
   const bits = [`#${i}`, t.bridge ? `${t.bridge} bridge` : t.terrain];
+  if (t.roads) bits.push('road');
   if (t.hotspot) bits.push(t.hotspot);
   if (t.smallRivers) bits.push('brook');
   if (t.blocked) bits.push('cliff edge');
@@ -143,20 +144,15 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
   cctx.stroke();
 }
 
-function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
-  const s = CELL, w = s * 0.48, h = s * 0.30, gx = x + s - w - 2, gy = y + 3;
-  const bodyY = gy + h * 0.42, bodyH = h * 0.40, wr = Math.max(1.7, h * 0.20), wy = bodyY + bodyH;
-  cctx.lineJoin = 'round'; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.fillStyle = color;
-  cctx.beginPath();                                   // car silhouette: hood → windshield → roof → rear
-  cctx.moveTo(gx, wy); cctx.lineTo(gx, bodyY); cctx.lineTo(gx + w * 0.22, bodyY);
-  cctx.lineTo(gx + w * 0.34, gy); cctx.lineTo(gx + w * 0.62, gy); cctx.lineTo(gx + w * 0.74, bodyY);
-  cctx.lineTo(gx + w, bodyY); cctx.lineTo(gx + w, wy); cctx.closePath();
-  cctx.fill(); cctx.stroke();
-  cctx.fillStyle = 'rgba(11,15,10,0.72)';             // windows
-  cctx.fillRect(gx + w * 0.37, gy + h * 0.06, w * 0.22, bodyY - gy - h * 0.04);
-  cctx.fillStyle = '#0b0f0a';                         // wheels
-  cctx.beginPath(); cctx.arc(gx + w * 0.27, wy, wr, 0, 7); cctx.fill();
-  cctx.beginPath(); cctx.arc(gx + w * 0.73, wy, wr, 0, 7); cctx.fill();
+const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null) {
+  const fs = CELL * 0.4;
+  cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'left'; cctx.textBaseline = 'top';
+  cctx.globalAlpha = driver ? 1 : 0.5;                  // empty car dimmer
+  cctx.fillText('🚗', x + CELL - fs - 1, y + 1);
+  cctx.globalAlpha = 1;
+  if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL - 3.5, y + 3.5, 3, 0, 7); cctx.fill(); cctx.stroke(); }
+  cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
 }
 
 export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: any, opts: { hover?: number; targets?: Map<number, Action> } = {}) {
@@ -209,15 +205,17 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = DTYPE_COLOR[t.finds[k].type];
       cctx.beginPath(); cctx.arc(x + 7 + k * 8, y + CELL - 7, 3, 0, 7); cctx.fill();
     }
-    for (let k = 0; k < t.equipment.length; k++) {   // item caches, top-left (square = gear, hull = boat)
-      const ex = x + 4 + k * 8, ey = y + 5;
-      cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1;
-      if (t.equipment[k].kind === 'boat') {
-        cctx.fillStyle = BROOK_LINE;
-        cctx.beginPath(); cctx.moveTo(ex - 1, ey + 1); cctx.lineTo(ex + 7, ey + 1); cctx.lineTo(ex + 5, ey + 6); cctx.lineTo(ex + 1, ey + 6); cctx.closePath();
-        cctx.fill(); cctx.stroke();
+    let gk = 0;                                      // item caches: gear = squares (top-left), boat = ⛵ (bottom-left)
+    for (const e of t.equipment) {
+      if (e.kind === 'boat') {
+        const fs = CELL * 0.32;
+        cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'left'; cctx.textBaseline = 'bottom';
+        cctx.fillText('⛵', x + 2, y + CELL - 1);
+        cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
       } else {
-        cctx.fillStyle = EQUIP_COLOR; cctx.fillRect(ex, ey, 5, 5); cctx.strokeRect(ex, ey, 5, 5);
+        const ex = x + 4 + gk * 8, ey = y + 5; gk++;
+        cctx.fillStyle = EQUIP_COLOR; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1;
+        cctx.fillRect(ex, ey, 5, 5); cctx.strokeRect(ex, ey, 5, 5);
       }
     }
   }
@@ -225,7 +223,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   // 4) vehicles (top-right; driver-coloured when occupied)
   for (const v of G.vehicles) {
     const c = v.pos % G.cols, r = (v.pos / G.cols) | 0;
-    carGlyph(cctx, c * CELL, r * CELL, v.driver !== null ? PLAYER_COLOR[+v.driver % 4] : '#8a8f86');
+    carGlyph(cctx, c * CELL, r * CELL, v.driver !== null ? PLAYER_COLOR[+v.driver % 4] : null);
   }
 
   // 5) legal-target rings (solid = walk, dashed = drive) + AP cost label (fractional for the car)
