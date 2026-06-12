@@ -36,11 +36,20 @@ Rules live in `game.ts` **only**. After **any** change, run all three before tru
 3. `npm run sweep` (scores should stay sane — winner ~12–15 at current tunables; a big jump means you moved a balance knob).
 
 ## Architecture notes (don't break these)
-- **Two movement predicates:** `canMoveDry` (validation — river is a hard barrier) vs `canMove` (play — boats overlay + main-river↔rocky exit-block). Validation must keep the **centre road bridge load-bearing**; do not validate on the wet graph.
-- **Edge-based movement:** `roads` / `paths` bitmasks (`N1 E2 S4 W8`). `cost` = 1 on-path or `arm↔arm`, else 2.
+- **Two movement predicates:** `canMoveDry` (validation — river is a hard barrier) vs `canMove` (play — boats overlay + main-river↔rocky exit-block). Validation must keep the **centre road bridge load-bearing**; do not validate on the wet graph. *(m6 reworks this — see Movement redesign.)*
+- **Edge-based movement:** `roads` / `paths` bitmasks (`N1 E2 S4 W8`). `cost` = 1 on-path or `arm↔arm`, else 2. *(m6: add `smallRivers` + `blocked` edge masks; drop `arm`.)*
 - **Two-phase map gen:** lay river → big branch → thin arms → crossings → roads **first**, then flood land, carve forest/rocky, repair rocky islands. Reseed up to **96×**, then **throw** (fail-early). Per-match seed comes from bgio `random` in `setup`.
 - **Prestige** is one **signed** accumulation (research + negative tokens); `vp = prestige + floor(money/4)`.
 - **Epilogue** is a plain phase flag (`G.epilogue` / `G.labLeft`) decremented in `turn.onEnd`, not bgio `phases`.
+
+## Movement redesign (m6 — agreed, in progress)
+Everything that moves is **edges (links) on a base tile**; non-link movement uses base-terrain rules. Four edge bitmasks (`N1 E2 S4 W8`): `roads`, `paths`, **`smallRivers`** (new), **`blocked`** (new).
+- **No large water bodies.** Water = **1-tile-wide rivers** only (the existing minimally-branching trunk/branch). Crossable solely by a **bridge** (foot/road) or a **boat** — foot `move` no longer wades onto water (today it does at 2 AP).
+- **Brooks** replace river *arms*: a `smallRivers` edge overlay on **land** cells — "paths, but for boats." A player **with a boat** travels along a brook at **1 AP/step**; on foot a brook edge is plain terrain (ford ≈ 2). Drop `arm`/`isArm`/`mkArm`.
+- **Boat = portable inventory item** (not a positioned ride like the car). One shared boat, a droppable/pick-up-able frontier resource (mirrors the gear `drop`/`pickup` machinery). **Carrying the boat = being boated:** you may enter water tiles and travel brook edges at boat-rate; drop it at any non-`blocked` bank for another player to grab. Without the boat, water is impassable.
+- **Cliffs = generalized `blocked` edges:** uncrossable by foot **and** car **and** boat, placeable on **any** edge. The old hardcoded boat↔rocky-shore exit-block becomes one instance (a `block()`ed water↔rocky edge at gen); plus **1–2 random cliff edges per land tile** (on plain land↔land edges only, so they can't orphan the road/water/footpath networks). Thread `onBlocked` through `canMove`/`canMoveDry`/`compRoad`/`roadReach`; the existing `placeHotspots` forage guard + reseed keeps the base area playable.
+
+Build in two verified commits (run the loop after each): **(1)** brooks + `blocked`/cliffs + render + validation; **(2)** portable boat + boat-only water + bot/enumerate + legends. Then update `game_design.md` and this file's Status/notes.
 
 ## Tunables (top-of-file consts)
 `MAX_CITE` (1), `CATALOGUE_DC` (7), `CARRY_SLOTS` (4), `START_AP` (4), `MONSOON_END` (4), `HELILIFT_COST` (12), `GEAR_COST` (5) / `GEAR_MAX` (2), `CAR_STEPS` (3), money→VP `/4`. To tune, change a const → recompile → `npm run sweep`. For many values, parameterize via `setupData` rather than editing consts.
@@ -52,7 +61,7 @@ Rules live in `game.ts` **only**. After **any** change, run all three before tru
 
 ## Status
 - **Done & verified:** m1 map, m2 economy + citations, m3 events/monsoon/hazards, m4 gear/car/boat/helilift, epilogue (lab season), m5 smoke + sweep tooling.
-- **Pending:** **m6 extension** (exploitation/conservation cash-out + region-health slider + thresholds — the richer negative-token source); wider parameter tuning; optional networked multiplayer.
+- **Pending:** **m6 movement redesign** (brooks-as-edges + 1-wide rivers + portable boat + generalized cliff/`blocked` edges — see section above; the active task); m7 extension (exploitation/conservation cash-out + region-health slider + thresholds — the richer negative-token source); wider parameter tuning; optional networked multiplayer.
 
 ## Guardrails
 - Keep it **serverless/static** — no server-authoritative multiplayer without discussion.
