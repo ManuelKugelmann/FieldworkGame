@@ -140,7 +140,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
               return (
                 <div key={id} className={id === ctx.currentPlayer ? 'pcard cur' : 'pcard'}>
                   <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>
-                  {driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} {vp} VP · {p.prestige}P · gear {p.gear}
+                  {driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} {vp} pts · {p.prestige} prestige · gear {p.gear}
                   <div className="pool">money pool: {p.money}$</div>
                   <div className="pool">
                     inventory: <span dangerouslySetInnerHTML={{ __html: sampleChips(p.samples) }} />

@@ -100,7 +100,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const vp = p.prestige + Math.floor(p.money / 4);
     const driving = G.vehicles.some(v => v.driver === id) ? ' 🚗' : '';
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
-      ` ${vp} VP · ${p.prestige}P · ${p.money}$ · gear ${p.gear}<br>` +
+      ` ${vp} pts · ${p.prestige} prestige · ${p.money}$ · gear ${p.gear}<br>` +
       `<span style="opacity:.7">carry:</span> ${sampleChips(p.samples)} ` +
       `<span style="opacity:.7">pub:</span> ${p.published.length}</div>`;
   }).join('');

@@ -144,17 +144,19 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
 }
 
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
-  const s = CELL, w = s * 0.42, gx = x + s - w - 3, gy = y + 4, cabH = s * 0.10, bodyH = s * 0.13;
-  cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.fillStyle = color;
-  cctx.beginPath();                                   // cabin (trapezoid)
-  cctx.moveTo(gx + w * 0.26, gy + cabH); cctx.lineTo(gx + w * 0.40, gy);
-  cctx.lineTo(gx + w * 0.66, gy); cctx.lineTo(gx + w * 0.74, gy + cabH); cctx.closePath();
+  const s = CELL, w = s * 0.48, h = s * 0.30, gx = x + s - w - 2, gy = y + 3;
+  const bodyY = gy + h * 0.42, bodyH = h * 0.40, wr = Math.max(1.7, h * 0.20), wy = bodyY + bodyH;
+  cctx.lineJoin = 'round'; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.fillStyle = color;
+  cctx.beginPath();                                   // car silhouette: hood → windshield → roof → rear
+  cctx.moveTo(gx, wy); cctx.lineTo(gx, bodyY); cctx.lineTo(gx + w * 0.22, bodyY);
+  cctx.lineTo(gx + w * 0.34, gy); cctx.lineTo(gx + w * 0.62, gy); cctx.lineTo(gx + w * 0.74, bodyY);
+  cctx.lineTo(gx + w, bodyY); cctx.lineTo(gx + w, wy); cctx.closePath();
   cctx.fill(); cctx.stroke();
-  cctx.beginPath(); cctx.rect(gx, gy + cabH, w, bodyH); cctx.fill(); cctx.stroke();   // body
+  cctx.fillStyle = 'rgba(11,15,10,0.72)';             // windows
+  cctx.fillRect(gx + w * 0.37, gy + h * 0.06, w * 0.22, bodyY - gy - h * 0.04);
   cctx.fillStyle = '#0b0f0a';                         // wheels
-  const wy = gy + cabH + bodyH, wr = Math.max(1.6, s * 0.05);
-  cctx.beginPath(); cctx.arc(gx + w * 0.26, wy, wr, 0, 7); cctx.fill();
-  cctx.beginPath(); cctx.arc(gx + w * 0.74, wy, wr, 0, 7); cctx.fill();
+  cctx.beginPath(); cctx.arc(gx + w * 0.27, wy, wr, 0, 7); cctx.fill();
+  cctx.beginPath(); cctx.arc(gx + w * 0.73, wy, wr, 0, 7); cctx.fill();
 }
 
 export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: any, opts: { hover?: number; targets?: Map<number, Action> } = {}) {
