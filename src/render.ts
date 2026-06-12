@@ -26,7 +26,7 @@ export function fitCanvas(canvas: HTMLCanvasElement, G: GState): CanvasRendering
   const wrap = canvas.parentElement;
   const availW = (wrap ? wrap.clientWidth : window.innerWidth) || window.innerWidth;
   const top = canvas.getBoundingClientRect().top;          // stable: set by the chrome above, not by the canvas's own height
-  const availH = window.innerHeight - top - 56;             // leave room for the legend + bottom margin
+  const availH = window.innerHeight - top - 104;           // leave room for the legend + bottom padding so the board doesn't force a vertical scroll
   CELL = Math.max(MIN_CELL, Math.floor(Math.min(availW / G.cols, availH / G.rows)));
   const d = dpr();
   canvas.style.width = `${G.cols * CELL}px`;

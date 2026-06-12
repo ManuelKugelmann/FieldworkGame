@@ -18,7 +18,7 @@ A **branching river system** carves the board (no large open water — channels 
 
 Everything that moves is an **edge link on a base tile** — four bitmasks (`N1 E2 S4 W8`): `roads`, `paths`, `smallRivers` (brooks), `blocked` (cliffs).
 
-Terrains: **road** (fast, sparse finds), **wild** (rich), **forest** (medium), **rocky** (passable, no finds), **water**.
+Terrains: **road** (fast, sparse finds), **wild** (rich), **forest** (medium), **rocky** (geology-rich outcrops — lots of `geo`, mid `arch`, low `zoo`/`bot`), **water**.
 
 **Crossings (organic):** exactly **1 central road bridge** (the only *defined* crossing — river cell nearest map centre, on the road network) + **2 foot bridges** on random river tiles. Some sections may end up **boat-only** or fully **isolated** — that's allowed; the play area simply shrinks.
 

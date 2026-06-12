@@ -22,7 +22,7 @@ export interface GState {
 const N = 10, START_AP = 4,  // 4 AP/round
   COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, HELILIFT_COST = 12;  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
-const RICH: Record<Terrain, number> = { road: 1, wild: 3, forest: 2, rocky: 0, water: 0 };
+const RICH: Record<Terrain, number> = { road: 1, wild: 3, forest: 2, rocky: 3, water: 0 };  // rocky = geology-rich outcrops
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const dirBit = (a: number, b: number) => b === a - N ? 1 : b === a + N ? 4 : b === a + 1 ? 2 : 8;  // N1 E2 S4 W8
 const onPath = (map: Tile[], a: number, b: number) => ((map[a].roads | map[a].paths) & dirBit(a, b)) !== 0;  // road OR foot edge
@@ -51,6 +51,7 @@ const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   road:   { geo: 5, arch: 2, zoo: 1, bot: 1 },
   forest: { bot: 4, zoo: 3, arch: 2, geo: 1 },
   wild:   { bot: 5, zoo: 4, arch: 2, geo: 1 },
+  rocky:  { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
 };
 function buildPool(t: Terrain): Discovery[] {
   const out: Discovery[] = [], w = WEIGHTS[t]!;
@@ -453,7 +454,7 @@ export const Expedition: Game<GState> = {
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0, boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
-      pools: { road: buildPool('road'), wild: buildPool('wild'), forest: buildPool('forest') },
+      pools: { road: buildPool('road'), wild: buildPool('wild'), forest: buildPool('forest'), rocky: buildPool('rocky') },
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
