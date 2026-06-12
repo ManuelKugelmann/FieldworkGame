@@ -133,5 +133,6 @@ $('hint').addEventListener('click', () => {
   dispatch(botAction(s.G, s.ctx, Math.random) as Action);
 });
 
+window.addEventListener('resize', draw);   // re-fit the board to the viewport
 scheduleBot();
 draw();

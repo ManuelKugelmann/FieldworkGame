@@ -37,6 +37,14 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
     drawBoard(cctx, G, ctx, { hover, targets });
   });
 
+  // re-fit the board to the viewport on resize
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const onResize = () => setTick((t) => t + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const cur = G.players[ctx.currentPlayer];
   const tile = G.map[G.players[seat].pos];
 
@@ -58,7 +66,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
         </span>
       </div>
       <div className="cols">
-        <div>
+        <div className="boardwrap">
           <canvas
             ref={canvasRef}
             onMouseMove={(e) => {

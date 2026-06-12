@@ -5,7 +5,8 @@ import type { GState, Tile, Discovery } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
-export const CELL = 46;            // CSS px per tile
+export let CELL = 46;              // CSS px per tile — recomputed responsively in fitCanvas()
+export const MIN_CELL = 16;        // floor so the board stays usable on tiny viewports
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#d8b15a', zoo: '#e07a6a', bot: '#7ad07a', arch: '#9a8ad0' };
 
@@ -21,6 +22,12 @@ const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H',
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
 export function fitCanvas(canvas: HTMLCanvasElement, G: GState): CanvasRenderingContext2D {
+  // size a square tile to fill the board's container width and the remaining viewport height
+  const wrap = canvas.parentElement;
+  const availW = (wrap ? wrap.clientWidth : window.innerWidth) || window.innerWidth;
+  const top = canvas.getBoundingClientRect().top;          // stable: set by the chrome above, not by the canvas's own height
+  const availH = window.innerHeight - top - 56;             // leave room for the legend + bottom margin
+  CELL = Math.max(MIN_CELL, Math.floor(Math.min(availW / G.cols, availH / G.rows)));
   const d = dpr();
   canvas.style.width = `${G.cols * CELL}px`;
   canvas.style.height = `${G.rows * CELL}px`;

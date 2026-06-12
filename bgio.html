@@ -19,9 +19,10 @@
         padding: .35rem .7rem; border-radius: 4px; cursor: pointer; font: inherit; font-size: .8rem;
       }
       button:hover { background: #1d3d22; }
-      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; }
-      canvas { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; }
-      .side { min-width: 16rem; max-width: 24rem; }
+      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+      .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+      canvas { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
+      .side { flex: 0 1 24rem; min-width: 16rem; max-width: 24rem; }
       .panel { margin-bottom: 1rem; }
       .panel h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
       .bar { display: flex; flex-wrap: wrap; gap: .4rem; }
