@@ -45,7 +45,7 @@ const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   road: '#5b5340', grassland: '#5d6e3a', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
 };
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
-const CLIFF_LINE = '#e2553a';      // impassable cliff edge
+const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const BRIDGE_FILL = '#7a6a44';
 const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R' };
@@ -127,23 +127,28 @@ function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, c
   cctx.stroke(); cctx.setLineDash([]);
 }
 
-// red bar drawn on the shared border between a & b = impassable cliff edge
+// bold black bar along the FULL shared border between a & b = impassable cliff edge
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
   const ca = a % G.cols, ra = (a / G.cols) | 0, cb = b % G.cols, rb = (b / G.cols) | 0;
-  cctx.strokeStyle = CLIFF_LINE; cctx.lineWidth = 3; cctx.setLineDash([]);
+  cctx.strokeStyle = CLIFF_LINE; cctx.lineWidth = Math.max(4, CELL * 0.12); cctx.setLineDash([]); cctx.lineCap = 'butt';
   cctx.beginPath();
-  if (ra === rb) { const x = Math.max(ca, cb) * CELL; cctx.moveTo(x, ra * CELL + 6); cctx.lineTo(x, ra * CELL + CELL - 6); }   // vertical border (E/W)
-  else { const y = Math.max(ra, rb) * CELL; cctx.moveTo(ca * CELL + 6, y); cctx.lineTo(ca * CELL + CELL - 6, y); }            // horizontal border (N/S)
+  if (ra === rb) { const x = Math.max(ca, cb) * CELL; cctx.moveTo(x, ra * CELL); cctx.lineTo(x, ra * CELL + CELL); }   // full vertical border (E/W)
+  else { const y = Math.max(ra, rb) * CELL; cctx.moveTo(ca * CELL, y); cctx.lineTo(ca * CELL + CELL, y); }            // full horizontal border (N/S)
   cctx.stroke();
 }
 
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
-  const w = CELL * 0.34, h = CELL * 0.2, gx = x + CELL - w - 4, gy = y + 4;
-  cctx.fillStyle = color; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1;
-  cctx.beginPath(); (cctx as any).roundRect?.(gx, gy, w, h, 3); cctx.fill(); cctx.stroke();
-  cctx.fillStyle = '#0b0f0a';
-  cctx.beginPath(); cctx.arc(gx + w * 0.28, gy + h, 2, 0, 7); cctx.fill();
-  cctx.beginPath(); cctx.arc(gx + w * 0.72, gy + h, 2, 0, 7); cctx.fill();
+  const s = CELL, w = s * 0.42, gx = x + s - w - 3, gy = y + 4, cabH = s * 0.10, bodyH = s * 0.13;
+  cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.fillStyle = color;
+  cctx.beginPath();                                   // cabin (trapezoid)
+  cctx.moveTo(gx + w * 0.26, gy + cabH); cctx.lineTo(gx + w * 0.40, gy);
+  cctx.lineTo(gx + w * 0.66, gy); cctx.lineTo(gx + w * 0.74, gy + cabH); cctx.closePath();
+  cctx.fill(); cctx.stroke();
+  cctx.beginPath(); cctx.rect(gx, gy + cabH, w, bodyH); cctx.fill(); cctx.stroke();   // body
+  cctx.fillStyle = '#0b0f0a';                         // wheels
+  const wy = gy + cabH + bodyH, wr = Math.max(1.6, s * 0.05);
+  cctx.beginPath(); cctx.arc(gx + w * 0.26, wy, wr, 0, 7); cctx.fill();
+  cctx.beginPath(); cctx.arc(gx + w * 0.74, wy, wr, 0, 7); cctx.fill();
 }
 
 export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: any, opts: { hover?: number; targets?: Map<number, Action> } = {}) {

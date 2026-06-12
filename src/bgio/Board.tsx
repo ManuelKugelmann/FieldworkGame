@@ -63,6 +63,22 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
   const cur = G.players[ctx.currentPlayer];
   const tile = G.map[G.players[seat].pos];
 
+  // built once, rendered twice: directly under the board on mobile, in the side panel on desktop
+  const actionsContent = ctx.gameover ? <span style={{ opacity: 0.6 }}>match complete</span>
+    : !myTurn ? <span style={{ opacity: 0.6 }}>P{ctx.currentPlayer} to move</span>
+      : (() => {
+        // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
+        const labeled = legal.map((a) => ({ a, label: actionLabel(a, tile) })).filter((x): x is { a: Action; label: string } => x.label !== null);
+        const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6 };
+        const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
+        const key = (a: Action) => `${a.move ?? a.event}:${(a.args ?? []).join(',')}`;
+        const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';
+        const sorted = labeled.slice().sort((p, q) => rank(p.a) - rank(q.a));
+        const left = sorted.filter((x) => !isRight(x.a)), right = sorted.filter((x) => isRight(x.a));
+        const btn = (x: { a: Action; label: string }) => <button key={key(x.a)} onClick={() => dispatch(x.a)}>{x.label}</button>;
+        return <>{left.map(btn)}{right.length > 0 && <span className="bar-right">{right.map(btn)}</span>}</>;
+      })();
+
   return (
     <div>
       <div className="toasts">
@@ -100,10 +116,9 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
               if (a) dispatch(a);
             }}
           />
-          <div className="legend">
-            {'gold ring = legal move (number = AP cost, fractional by car)   dashed ring = drive   tile darkness = move cost\n'}
-            {'solid line = road   dashed line = path   dashed blue = brook (boat)   red bar = cliff   water = boat only\n'}
-            {'H base  M village  R remote   ▫ = gear cache   ⛵ = boat   ▭ = car   dots = finds   ● = player'}
+          <div className="panel actions-mobile">
+            <h2>Your actions</h2>
+            <div className="bar">{actionsContent}</div>
           </div>
         </div>
         <div className="side">
@@ -136,26 +151,9 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
             })}
           </div>
 
-          <div className="panel">
+          <div className="panel actions-desktop">
             <h2>Your actions</h2>
-            <div className="bar">
-              {ctx.gameover ? <span style={{ opacity: 0.6 }}>match complete</span>
-                : !myTurn ? <span style={{ opacity: 0.6 }}>P{ctx.currentPlayer} to move</span>
-                  : (() => {
-                    // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
-                    const labeled = legal
-                      .map(a => ({ a, label: actionLabel(a, tile) }))
-                      .filter((x): x is { a: Action; label: string } => x.label !== null);
-                    const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6 };
-                    const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
-                    const key = (a: Action) => `${a.move ?? a.event}:${(a.args ?? []).join(',')}`;
-                    const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';
-                    const sorted = labeled.slice().sort((p, q) => rank(p.a) - rank(q.a));
-                    const left = sorted.filter(x => !isRight(x.a)), right = sorted.filter(x => isRight(x.a));
-                    const btn = (x: { a: Action; label: string }) => <button key={key(x.a)} onClick={() => dispatch(x.a)}>{x.label}</button>;
-                    return <>{left.map(btn)}{right.length > 0 && <span className="bar-right">{right.map(btn)}</span>}</>;
-                  })()}
-            </div>
+            <div className="bar">{actionsContent}</div>
           </div>
 
           <div className="panel">

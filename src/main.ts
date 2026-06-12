@@ -127,10 +127,6 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   }
 
   $('log').textContent = G.log.slice(-30).join('\n');
-  $('legend').textContent =
-    'gold ring = legal move (number = AP cost, fractional by car)   dashed ring = drive   tile darkness = move cost\n' +
-    'solid line = road   dashed line = path   dashed blue = brook (boat)   red bar = cliff   water = boat only\n' +
-    'H base  M village  R remote   ▫ = gear cache   ⛵ = boat   ▭ = car   dots = finds   ● = player';
 }
 
 canvas.addEventListener('mousemove', e => {
