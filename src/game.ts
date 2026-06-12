@@ -130,7 +130,7 @@ function genOnce(seed: number) {
   const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].terrain === 'road') a.push(i); return a; };
   for (let b = 0; b < 3; b++) { const rc = roadCells(); let i = rc[Math.floor(rand() * rc.length)]; for (let s = 0; s < 3; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, 'road'); link(i, j); i = j; } }
 
-  // flood wild, carve forest + rocky (both passable; rocky only gates river exit, so no connectivity guard needed)
+  // flood wild, carve forest + rocky + grassland (all passable land; rocky moves at 2 AP just like wild, bushwhack)
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'wild');
   const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'wild') set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'wild'); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };
   const scale = (N * N) / 100;   // patch counts scale with board area (10×10 … 15×15)
