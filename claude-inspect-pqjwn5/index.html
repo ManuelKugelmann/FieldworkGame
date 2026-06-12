@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Expedition: Verdant Prime</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; padding: 1.5rem;
+        background: #0b0f0a; color: #d6e4d0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .25rem; }
+      .sub { color: #6f8f70; font-size: .8rem; margin-bottom: 1rem; }
+      .controls { margin-bottom: 1rem; display: flex; gap: .5rem; flex-wrap: wrap; }
+      button {
+        background: #16301a; color: #cfe9c8; border: 1px solid #2f5a34;
+        padding: .4rem .8rem; border-radius: 4px; cursor: pointer; font: inherit;
+      }
+      button:hover { background: #1d3d22; }
+      .cols { display: flex; gap: 2rem; flex-wrap: wrap; }
+      pre { line-height: 1.15; margin: 0; }
+      #map { font-size: 1.4rem; letter-spacing: .15rem; }
+      #log { max-height: 60vh; overflow: auto; font-size: .75rem; color: #9fc69a; }
+      .legend { color: #6f8f70; font-size: .72rem; margin-top: .75rem; white-space: pre; }
+    </style>
+    <script type="module" crossorigin src="/FieldworkGame/claude-inspect-pqjwn5/assets/index-D76sBXsH.js"></script>
+  </head>
+  <body>
+    <h1>Expedition: Verdant Prime</h1>
+    <div class="sub">serverless boardgame.io build — self-play viewer</div>
+    <div class="controls">
+      <button id="step">Step</button>
+      <button id="auto">Auto-play</button>
+      <button id="reset">New match</button>
+      <span id="status"></span>
+    </div>
+    <div class="cols">
+      <div>
+        <pre id="map"></pre>
+        <div class="legend" id="legend"></div>
+      </div>
+      <pre id="log"></pre>
+    </div>
+  </body>
+</html>
