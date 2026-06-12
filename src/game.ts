@@ -6,11 +6,11 @@ export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
 export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base, remote base (frontier hub), village (market)
-export type EquipKind = 'gear';                       // m4 entity: gear cached on a tile (droppable/pickup-able)
+export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile (droppable/pickup-able)
 export interface Equip { kind: EquipKind; }
 export interface Vehicle { pos: number; driver: string | null; }  // car: a positioned entity you board/leave; drive moves both
 export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; }  // roads/paths/smallRivers(brooks)/blocked(cliffs) = edge bitmasks N1 E2 S4 W8
-export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; gear: number; }  // gear = catalogue-roll bonus
+export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; gear: number; boat: boolean; }  // gear = catalogue-roll bonus; boat = carrying the shared boat (enables water crossing)
 export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
@@ -29,12 +29,20 @@ const onPath = (map: Tile[], a: number, b: number) => ((map[a].roads | map[a].pa
 const onBlocked = (map: Tile[], a: number, b: number) => (map[a].blocked & dirBit(a, b)) !== 0;  // cliff edge: uncrossable by anyone (foot/car/boat)
 // board/leave a bridge only via an edge; land↔land always allowed; cliffs hard-block everyone
 const canMoveDry = (map: Tile[], a: number, b: number) => onBlocked(map, a, b) || plainRiver(map[a]) || plainRiver(map[b]) ? false : (map[a].bridge || map[b].bridge) ? onPath(map, a, b) : true;  // river = hard barrier (map validation)
-const canMove = (map: Tile[], a: number, b: number) => {           // play graph (foot): bridges via edge; water still wadeable until the boat lands (m6.2)
+const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph: bridges via edge; open water needs a boat; cliffs block all
   if (onBlocked(map, a, b)) return false;                          // cliff = hard barrier for everyone
   if (map[a].bridge || map[b].bridge) return onPath(map, a, b);    // bridge: board/leave via an edge
-  return true;                                                     // land↔land/brook, land↔river, river↔river (no rocky exit constraint)
+  if (plainRiver(map[a]) || plainRiver(map[b])) return false;      // open water — boat only (no foot-ford)
+  return true;                                                     // land↔land / land↔brook (no rocky exit constraint)
 };
-const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 1 : 2;  // road/foot edge = 1 AP; ford/bushwhack/open-water = 2 (brook discount is boat-only, m6.2)
+const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 1 : 2;  // road/foot edge = 1 AP; bushwhack/ford = 2 (brook discount is boat-only)
+const canBoat = (map: Tile[], a: number, b: number) => {           // BOAT graph (player carrying the boat): water + brooks, and still walks dry land
+  if (onBlocked(map, a, b)) return false;
+  if (map[a].bridge || map[b].bridge) return onPath(map, a, b);
+  return true;                                                     // land↔land, land↔water, water↔water
+};
+const boatCost = (map: Tile[], a: number, b: number) =>             // water / brook / path step = 1 AP; portaging the boat over dry land = 2
+  (plainRiver(map[a]) || plainRiver(map[b]) || onPath(map, a, b) || (map[a].smallRivers & dirBit(a, b))) ? 1 : 2;
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
 const isHub = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // research+publish hubs (road base ≡ remote base)
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  // buy gear here (road-network services)
@@ -204,12 +212,14 @@ function reveal(G: GState, t: number, random: any) {
 const myVehicle = (G: GState, id: string) => G.vehicles.find(v => v.driver === id);
 const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || !nbrs(p.pos).includes(t) || !canMove(G.map, p.pos, t)) return INVALID_MOVE;
-  const c = cost(G.map, p.pos, t);
+  if (G.epilogue || !nbrs(p.pos).includes(t)) return INVALID_MOVE;
+  const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t);   // boating opens water + cheap brooks
+  if (!ok) return INVALID_MOVE;
+  const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t);
   if (p.ap < c) return INVALID_MOVE;
   const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
   p.ap -= c; p.pos = t; reveal(G, t, random);
-  G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap)`);
+  G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' ⛵' : ''})`);
 };
 const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (road edges only)
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
@@ -229,17 +239,21 @@ const leave: Move<GState> = ({ G, ctx }) => {   // step out; the car stays where
   car.driver = null;
   G.log.push(`P${ctx.currentPlayer} leave car@${car.pos}`);
 };
-const drop: Move<GState> = ({ G, ctx }) => {   // cache a gear level on the current tile (free)
+const drop: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // cache a carried item on the current tile (free)
   const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || p.gear < 1) return INVALID_MOVE;
-  p.gear -= 1; G.map[p.pos].equipment.push({ kind: 'gear' });
-  G.log.push(`P${ctx.currentPlayer} drop gear@${p.pos}`);
+  if (G.epilogue) return INVALID_MOVE;
+  if (kind === 'boat') { if (!p.boat) return INVALID_MOVE; p.boat = false; }
+  else { if (p.gear < 1) return INVALID_MOVE; p.gear -= 1; }
+  G.map[p.pos].equipment.push({ kind });
+  G.log.push(`P${ctx.currentPlayer} drop ${kind}@${p.pos}`);
 };
-const pickup: Move<GState> = ({ G, ctx }) => {   // reclaim cached gear from the current tile (free, up to GEAR_MAX)
-  const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, idx = eq.findIndex(e => e.kind === 'gear');
-  if (G.epilogue || idx < 0 || p.gear >= GEAR_MAX) return INVALID_MOVE;
-  eq.splice(idx, 1); p.gear += 1;
-  G.log.push(`P${ctx.currentPlayer} pickup gear@${p.pos}`);
+const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // reclaim a cached item from the current tile (free)
+  const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, idx = eq.findIndex(e => e.kind === kind);
+  if (G.epilogue || idx < 0) return INVALID_MOVE;
+  if (kind === 'boat') { if (p.boat) return INVALID_MOVE; p.boat = true; }   // one boat per player
+  else { if (p.gear >= GEAR_MAX) return INVALID_MOVE; p.gear += 1; }
+  eq.splice(idx, 1);
+  G.log.push(`P${ctx.currentPlayer} pickup ${kind}@${p.pos}`);
 };
 
 // ---- research set-patterns. assemble() uses owned samples first, cites others' published pools for any shortfall ----
@@ -354,14 +368,16 @@ export const enumerate = (G: GState, ctx: any) => {
   const p = G.players[ctx.currentPlayer], out: any[] = [], tile = G.map[p.pos];
   if (!G.epilogue) {                                                  // field season
     const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
-    nbrs(p.pos).forEach(t => { if (canMove(G.map, p.pos, t) && p.ap >= cost(G.map, p.pos, t)) out.push({ move: 'move', args: [t] }); });
+    nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });
     if (p.ap >= 1 && myCar) roadReach(G.map, myCar.pos, CAR_STEPS).forEach(d => out.push({ move: 'drive', args: [d] }));
     G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1 && p.samples.length < CARRY_SLOTS) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));
     if (p.ap >= 1 && isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) out.push({ move: 'buy', args: [] });
-    if (p.gear >= 1) out.push({ move: 'drop', args: [] });
-    if (tile.equipment.some(e => e.kind === 'gear') && p.gear < GEAR_MAX) out.push({ move: 'pickup', args: [] });
+    if (p.gear >= 1) out.push({ move: 'drop', args: ['gear'] });
+    if (p.boat) out.push({ move: 'drop', args: ['boat'] });
+    if (tile.equipment.some(e => e.kind === 'gear') && p.gear < GEAR_MAX) out.push({ move: 'pickup', args: ['gear'] });
+    if (tile.equipment.some(e => e.kind === 'boat') && !p.boat) out.push({ move: 'pickup', args: ['boat'] });
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   if (p.ap >= 1 && (G.epilogue || isHub(tile))) { const cit = citablePool(G, ctx.currentPlayer); PATTERNS.forEach(pat => { if (assemble(pat.name, p.samples, cit)) out.push({ move: 'publish', args: [pat.name] }); }); }  // lab research = publish anywhere
@@ -406,9 +422,10 @@ export const Expedition: Game<GState> = {
     const seed = random ? (Math.floor(random.Number() * 1e9) || MAP_SEED) : MAP_SEED;   // per-match map+deck variety
     const { map, start } = generateMap(seed);
     map[start].revealed = true;
+    map[start].equipment.push({ kind: 'boat' });   // one shared boat, cached at base (pick it up to cross water)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
-        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0 }])),
+        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0, boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
       pools: { road: buildPool('road'), wild: buildPool('wild'), forest: buildPool('forest') },

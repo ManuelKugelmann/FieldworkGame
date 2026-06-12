@@ -82,7 +82,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';
     const vp = p.prestige + Math.floor(p.money / 4);
     const driving = G.vehicles.some(v => v.driver === id) ? ' 🚗' : '';
-    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}` +
+    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
       ` ${vp} VP · ${p.prestige}P · ${p.money}$ · gear ${p.gear}<br>` +
       `<span style="opacity:.7">carry:</span> ${sampleChips(p.samples)} ` +
       `<span style="opacity:.7">pub:</span> ${p.published.length}</div>`;
@@ -106,7 +106,8 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   $('log').textContent = G.log.slice(-30).join('\n');
   $('legend').textContent =
     'gold ring = walk   dashed ring = drive   solid line = road   dashed line = path\n' +
-    'H base  M village  R remote   ▫ = gear cache   ▭ = car   dots = finds   ● = player';
+    'dashed blue = brook (boat)   red bar = cliff (impassable)   water = boat only\n' +
+    'H base  M village  R remote   ▫ = gear cache   ⛵ = boat   ▭ = car   dots = finds   ● = player';
 }
 
 canvas.addEventListener('mousemove', e => {

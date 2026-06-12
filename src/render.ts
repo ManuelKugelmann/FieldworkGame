@@ -52,8 +52,8 @@ export function actionLabel(a: Action, tile: Tile): string | null {
   if (a.move === 'buy') return 'Buy gear (−5$)';
   if (a.move === 'board') return 'Board car';
   if (a.move === 'leave') return 'Leave car';
-  if (a.move === 'drop') return 'Drop gear';
-  if (a.move === 'pickup') return 'Pick up gear';
+  if (a.move === 'drop') return a.args?.[0] === 'boat' ? 'Drop boat' : 'Drop gear';
+  if (a.move === 'pickup') return a.args?.[0] === 'boat' ? 'Pick up boat' : 'Pick up gear';
   if (a.move === 'helilift') return 'Helilift → base (−12$)';
   if (a.event === 'endTurn') return 'End turn';
   return null;
@@ -67,7 +67,9 @@ export function describeTile(G: GState, i: number): string {
   if (t.blocked) bits.push('cliff edge');
   const car = G.vehicles.find(v => v.pos === i);
   if (car) bits.push(car.driver !== null ? `car (P${car.driver})` : 'car (empty)');
-  if (t.equipment.length) bits.push(`${t.equipment.length} gear cached`);
+  const gearN = t.equipment.filter(e => e.kind === 'gear').length;
+  if (gearN) bits.push(`${gearN} gear cached`);
+  if (t.equipment.some(e => e.kind === 'boat')) bits.push('boat here');
   if (!t.revealed) bits.push('unexplored');
   else if (t.finds.length) bits.push('finds: ' + t.finds.map(d => `${d.type}${d.color}`).join(' '));
   return bits.join(' · ');
@@ -152,9 +154,16 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = DTYPE_COLOR[t.finds[k].type];
       cctx.beginPath(); cctx.arc(x + 7 + k * 8, y + CELL - 7, 3, 0, 7); cctx.fill();
     }
-    for (let k = 0; k < t.equipment.length; k++) {   // gear caches, top-left
-      cctx.fillStyle = EQUIP_COLOR; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1;
-      cctx.fillRect(x + 4 + k * 8, y + 5, 5, 5); cctx.strokeRect(x + 4 + k * 8, y + 5, 5, 5);
+    for (let k = 0; k < t.equipment.length; k++) {   // item caches, top-left (square = gear, hull = boat)
+      const ex = x + 4 + k * 8, ey = y + 5;
+      cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1;
+      if (t.equipment[k].kind === 'boat') {
+        cctx.fillStyle = BROOK_LINE;
+        cctx.beginPath(); cctx.moveTo(ex - 1, ey + 1); cctx.lineTo(ex + 7, ey + 1); cctx.lineTo(ex + 5, ey + 6); cctx.lineTo(ex + 1, ey + 6); cctx.closePath();
+        cctx.fill(); cctx.stroke();
+      } else {
+        cctx.fillStyle = EQUIP_COLOR; cctx.fillRect(ex, ey, 5, 5); cctx.strokeRect(ex, ey, 5, 5);
+      }
     }
   }
 

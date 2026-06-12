@@ -36,13 +36,13 @@ Rules live in `game.ts` **only**. After **any** change, run all three before tru
 3. `npm run sweep` (scores should stay sane — winner ~12–15 at current tunables; a big jump means you moved a balance knob).
 
 ## Architecture notes (don't break these)
-- **Two movement predicates:** `canMoveDry` (validation — river is a hard barrier) vs `canMove` (play — boats overlay + main-river↔rocky exit-block). Validation must keep the **centre road bridge load-bearing**; do not validate on the wet graph. *(m6 reworks this — see Movement redesign.)*
-- **Edge-based movement:** `roads` / `paths` bitmasks (`N1 E2 S4 W8`). `cost` = 1 on-path or `arm↔arm`, else 2. *(m6: add `smallRivers` + `blocked` edge masks; drop `arm`.)*
-- **Two-phase map gen:** lay river → big branch → thin arms → crossings → roads **first**, then flood land, carve forest/rocky, repair rocky islands. Reseed up to **96×**, then **throw** (fail-early). Per-match seed comes from bgio `random` in `setup`.
+- **Movement predicates (three graphs):** `canMoveDry` (validation — river is a hard barrier) · `canMove`/`cost` (FOOT play graph — **water impassable without a boat**, no foot-ford of open water) · `canBoat`/`boatCost` (BOAT graph when `p.boat` — water + brooks at 1 AP). `onBlocked` (cliffs) hard-stops every graph. `move` picks foot-vs-boat by `p.boat`. Validation must keep the **centre road bridge load-bearing**; the foot graph also excludes water, so the base area must be foot/bridge-reachable.
+- **Edge-based movement:** four bitmasks (`N1 E2 S4 W8`) — `roads`, `paths`, `smallRivers` (brooks), `blocked` (cliffs). Foot `cost` = 1 on-path else 2 (brooks give **no** foot discount); `boatCost` = 1 on water/brook/path else 2.
+- **Two-phase map gen:** lay river → big branch → crossings → roads **first**, then flood land, carve forest/rocky, scatter **cliffs** (`blocked` edges), place hotspots, then footpaths **and brooks** (`smallRivers` overlays on land). Reseed up to **96×**, then **throw** (fail-early). Per-match seed comes from bgio `random` in `setup`.
 - **Prestige** is one **signed** accumulation (research + negative tokens); `vp = prestige + floor(money/4)`.
 - **Epilogue** is a plain phase flag (`G.epilogue` / `G.labLeft`) decremented in `turn.onEnd`, not bgio `phases`.
 
-## Movement redesign (m6 — agreed, in progress)
+## Movement redesign (m6 — done & verified)
 Everything that moves is **edges (links) on a base tile**; non-link movement uses base-terrain rules. Four edge bitmasks (`N1 E2 S4 W8`): `roads`, `paths`, **`smallRivers`** (new), **`blocked`** (new).
 - **No large water bodies.** Water = **1-tile-wide rivers** only (the existing minimally-branching trunk/branch). Crossable solely by a **bridge** (foot/road) or a **boat** — foot `move` no longer wades onto water (today it does at 2 AP).
 - **Brooks** replace river *arms*: a `smallRivers` edge overlay on **land** cells — "paths, but for boats." A player **with a boat** travels along a brook at **1 AP/step**; on foot a brook edge is plain terrain — fording costs the **underlying terrain cost, no surcharge** (i.e. `cost` is unchanged: `onPath ? 1 : 2`, with `smallRivers` discount applying only when boated). Drop `arm`/`isArm`/`mkArm`.
@@ -51,19 +51,19 @@ Everything that moves is **edges (links) on a base tile**; non-link movement use
 - **No rocky exit constraints.** Drop the boat↔rocky-shore exit-block entirely (`canMove` line ~36) — rocky tiles no longer gate boat launch/landing. The rocky-island repair at gen (line ~132) is then unnecessary too (a water-locked rocky tile is reachable by boat).
 - **Cliffs = generalized `blocked` edges:** uncrossable by foot **and** car **and** boat, placeable on **any** edge. The *only* enter/exit barriers; sourced purely from **1–2 random cliff edges per land tile** (on plain land↔land edges only, so they can't orphan the road/water/footpath networks). Thread `onBlocked` through `canMove`/`canMoveDry`/`compRoad`/`roadReach`; the existing `placeHotspots` forage guard + reseed keeps the base area playable.
 
-Build in two verified commits (run the loop after each): **(1)** brooks + `blocked`/cliffs + render + validation; **(2)** portable boat + boat-only water + bot/enumerate + legends. Then update `game_design.md` and this file's Status/notes.
+Shipped in two verified commits: **(1)** brooks + `blocked`/cliffs + render + validation; **(2)** portable boat + boat-only water + enumerate + legends. The heuristic `botAction` is **boat-unaware** (routes on the foot/bridge graph; never picks up the boat) — boating is exposed via `enumerate` for the UI/MCTS, and self-play stays sane because base is always foot-reachable so nobody strands (helilifts ≈0). Cliff density knob: `rand() >= 0.14` gate in `genOnce` (≈13 cliff edges/map); brooks: `brookN` 1–2.
 
 ## Tunables (top-of-file consts)
 `MAX_CITE` (1), `CATALOGUE_DC` (7), `CARRY_SLOTS` (4), `START_AP` (4), `MONSOON_END` (4), `HELILIFT_COST` (12), `GEAR_COST` (5) / `GEAR_MAX` (2), `CAR_STEPS` (3), money→VP `/4`. To tune, change a const → recompile → `npm run sweep`. For many values, parameterize via `setupData` rather than editing consts.
 
 ## Known findings
 - **`MAX_CITE = 1` is correct** — the sweep shows `2` nearly doubles publishes (the extra almost all *cited*) and inflates winning scores ~12→~22. Keep `1` unless re-swept.
-- **Boats matter** on varied maps (~1.5 water-steps/match) because organic crossings leave some sections boat-only; on a single fixed map they look inert.
+- **Boat is a player/UI feature, not a bot one.** The heuristic bot never carries the boat, so sweep self-play doesn't exercise boating; it's covered by a white-box check (footed player blocked from water, boated player allowed). Removing foot-ford of water did **not** strand the bot (base is always foot-reachable) — sweep VP stayed ~11 and helilifts ~0.
 - **MCTS:** bgio's `MCTSBot` is interface-compatible (same `enumerate`) but **full playouts run to terminal (~minutes/match)** and shallow playouts play badly (it helilifts into negative prestige). Stronger-than-heuristic tuning is an **offline** job, or needs game-specific `objectives`. The heuristic sweep is the practical in-loop tool.
 
 ## Status
-- **Done & verified:** m1 map, m2 economy + citations, m3 events/monsoon/hazards, m4 gear/car/boat/helilift, epilogue (lab season), m5 smoke + sweep tooling.
-- **Pending:** **m6 movement redesign** (brooks-as-edges + 1-wide rivers + portable boat + generalized cliff/`blocked` edges — see section above; the active task); m7 extension (exploitation/conservation cash-out + region-health slider + thresholds — the richer negative-token source); wider parameter tuning; optional networked multiplayer.
+- **Done & verified:** m1 map, m2 economy + citations, m3 events/monsoon/hazards, m4 gear/car/helilift, epilogue (lab season), m5 smoke + sweep tooling, **m6 movement redesign** (brooks-as-edges + 1-wide rivers + portable boat + generalized cliff/`blocked` edges — see section above).
+- **Pending:** m7 extension (exploitation/conservation cash-out + region-health slider + thresholds — the richer negative-token source); a **boat-aware bot** (so sweep exercises boating); wider parameter tuning; optional networked multiplayer.
 
 ## Guardrails
 - Keep it **serverless/static** — no server-authoritative multiplayer without discussion.
