@@ -20,7 +20,12 @@
       }
       button:hover { background: #1d3d22; }
       .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+      @media (min-width: 820px) {
+        .cols { flex-wrap: nowrap; }                 /* keep the stats beside the field, not wrapped below */
+        body { padding-right: calc(1.5rem + 300px); } /* reserve the right strip for the fixed Debug inspector so nothing hides under it */
+      }
       .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+      .bar-right { margin-left: auto; display: flex; gap: .4rem; flex-wrap: wrap; }   /* helilift + End turn pinned to the right */
       canvas { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
       .side { flex: 0 1 24rem; min-width: 16rem; max-width: 24rem; }
       .panel { margin-bottom: 1rem; }
@@ -38,7 +43,7 @@
       .status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; }
       .controls { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/bgio-rj-u-mUh.js"></script>
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/bgio-DEMBQNT8.js"></script>
     <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-BQrc5N2_.js">
   </head>
   <body>

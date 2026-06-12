@@ -22,6 +22,7 @@
       button:hover { background: #1d3d22; }
       button:disabled { opacity: .4; cursor: default; }
       .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+      @media (min-width: 760px) { .cols { flex-wrap: nowrap; } }   /* keep the stats beside the field, never wrapped below it */
       .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
       #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
       .side { flex: 0 1 22rem; min-width: 16rem; max-width: 22rem; }
@@ -29,6 +30,7 @@
       .panel h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
       #actions { display: flex; flex-wrap: wrap; gap: .4rem; }
       #actions button { padding: .35rem .6rem; font-size: .8rem; }
+      .bar-right { margin-left: auto; display: flex; gap: .4rem; flex-wrap: wrap; }   /* helilift + End turn pinned right */
       .pcard { font-size: .78rem; padding: .35rem .5rem; border: 1px solid #1d3d22; border-radius: 5px; margin-bottom: .35rem; }
       .pcard.cur { border-color: #c9b14a; background: #161306; }
       .pcard .who { font-weight: 600; }
@@ -39,7 +41,7 @@
       .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
       #status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; min-height: 1.2rem; }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-C8KKduzX.js"></script>
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-CxdrEkGk.js"></script>
     <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-BQrc5N2_.js">
   </head>
   <body>
@@ -60,8 +62,8 @@
         <div id="status"></div>
         <div class="panel"><h2>Players</h2><div id="players"></div></div>
         <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
-        <div class="panel"><h2>Inspect</h2><div id="inspect">hover a tile</div></div>
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
+        <div class="panel"><h2>Inspect</h2><div id="inspect">hover a tile</div></div>
       </div>
     </div>
   </body>
