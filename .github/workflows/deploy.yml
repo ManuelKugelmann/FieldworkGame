@@ -1,0 +1,87 @@
+name: Deploy to GitHub Pages
+
+# Every branch deploys into its own subfolder on the `gh-pages` branch:
+#   main           -> https://<owner>.github.io/<repo>/
+#   <other branch> -> https://<owner>.github.io/<repo>/<slug>/   (slug = branch, non-alnum -> '-')
+# `keep_files: true` means a push only writes its own subfolder and leaves every
+# other branch's deploy intact. Branch deletes are cleaned up by cleanup.yml.
+
+on:
+  push:
+    branches: ['**']
+
+# Serialize ALL writers of the gh-pages branch (this workflow + cleanup.yml) so
+# concurrent branch deploys never race on the same branch. Queue, don't cancel.
+concurrency:
+  group: gh-pages-writer
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # push to gh-pages
+  statuses: write   # attach the preview-URL status to the commit / PR
+
+jobs:
+  deploy:
+    if: github.ref_name != 'gh-pages'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Compute deploy paths
+        id: vars
+        run: |
+          repo="${{ github.event.repository.name }}"
+          owner_lc="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          branch="${{ github.ref_name }}"
+          if [ "$branch" = "main" ]; then
+            dest=""
+            base="/$repo/"
+            url="https://$owner_lc.github.io/$repo/"
+          else
+            slug="$(echo "$branch" | sed 's/[^a-zA-Z0-9]/-/g')"
+            dest="$slug"
+            base="/$repo/$slug/"
+            url="https://$owner_lc.github.io/$repo/$slug/"
+          fi
+          {
+            echo "dest=$dest"
+            echo "base=$base"
+            echo "url=$url"
+          } >> "$GITHUB_OUTPUT"
+          echo "Deploying $branch -> ${dest:-<root>}  ($url)"
+
+      # CI gate (mirrors CLAUDE.md): strict types + real-engine smoke must pass before we publish.
+      - run: npm run typecheck
+      - run: npm run smoke
+
+      - name: Build
+        run: npm run build -- --base="${{ steps.vars.outputs.base }}"
+
+      - name: Publish subfolder to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: ${{ steps.vars.outputs.dest }}
+          keep_files: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'deploy ${{ github.ref_name }} -> ${{ steps.vars.outputs.dest || ''<root>'' }} (${{ github.sha }})'
+
+      # Link the deployed version on the PR via the commit Status API (no comment spam).
+      - name: Attach preview URL status
+        if: github.ref_name != 'main'
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -d "$(printf '{"state":"success","context":"github-pages-preview","description":"Branch preview deployed","target_url":"%s"}' "${{ steps.vars.outputs.url }}")"
