@@ -9,6 +9,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: ['**']
+  # Manual redeploy of any branch from the Actions tab (no new commit needed).
+  workflow_dispatch:
 
 # Serialize ALL writers of the gh-pages branch (this workflow + cleanup.yml) so
 # concurrent branch deploys never race on the same branch. Queue, don't cancel.
