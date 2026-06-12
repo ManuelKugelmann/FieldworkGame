@@ -8,18 +8,27 @@ intent and [`CLAUDE.md`](./CLAUDE.md) for the build/verify workflow.
 
 ## ▶ Play
 
-- **Main:** https://manuelkugelmann.github.io/FieldworkGame/
+Two frontends ship from the same rules engine (`src/game.ts`):
+
+- **Play — canvas viewer:** https://manuelkugelmann.github.io/FieldworkGame/
+  — lean, React-free click-to-play board with bot opponents.
+- **Inspect — bgio frontend:** https://manuelkugelmann.github.io/FieldworkGame/bgio.html
+  — boardgame.io React frontend: rich per-player panels (inventory, published
+  pool, money), click-to-play, and the boardgame.io Debug panel for full state
+  inspection / force-moves.
 
 Every branch is also deployed to its own preview, so you can try any version
 before it merges:
 
 - **Branch previews:** `https://manuelkugelmann.github.io/FieldworkGame/<branch-slug>/`
-  (the branch name with every non-alphanumeric character replaced by `-`, e.g.
-  `claude/inspect-pqjwn5` → `.../claude-inspect-pqjwn5/`).
+  and `…/<branch-slug>/bgio.html` (the branch name with every non-alphanumeric
+  character replaced by `-`, e.g. `claude/inspect-pqjwn5` →
+  `.../claude-inspect-pqjwn5/`).
 
-On a pull request, the deployed preview link is attached to the head commit as a
-**`github-pages-preview` status check** — open the PR's checks and follow
-*Details* to the live build.
+On a pull request, both deployed previews are attached to the head commit as
+**`github-pages-preview`** (canvas) and **`github-pages-preview-bgio`**
+(inspector) status checks — open the PR's checks and follow *Details* to the
+live build.
 
 ## Develop
 

@@ -1,15 +1,17 @@
 import { createRoot } from 'react-dom/client';
 import { Client } from 'boardgame.io/react';
+import { Debug } from 'boardgame.io/debug';
 import { Expedition } from '../game';
 import type { GState } from '../game';
 import { Board } from './Board';
 
-// bgio React Client. `debug: true` mounts boardgame.io's Debug panel (browse
-// G/ctx, replay the log, force moves) in `npm run dev`; bgio only wires its
-// default Debug when NODE_ENV !== 'production', so the static production build
-// ships without it (dev build for now — keeps the prod bundle lean). To ship
-// the panel on the deploy later, pass `debug: { impl: Debug }` with an explicit
-// `import { Debug } from 'boardgame.io/debug'`.
+// bgio React Client. The Debug panel (browse G/ctx, replay the log, force
+// moves) is the inspector's whole point, so we ship it on the static deploy:
+// boardgame.io only wires its default Debug when NODE_ENV !== 'production', so
+// we pass { impl: Debug } explicitly to keep it in the production build too.
+// TEMP — debug build is fine until the game is stable; once stable, drop the
+// `boardgame.io/debug` import and use `debug: true` (dev-only) to slim the
+// deployed bundle (~101kB → ~71kB gzip).
 //
 // No multiplayer transport is set, so this runs fully client-side/static
 // (serverless) — the local master controls whichever player's turn it is
@@ -25,7 +27,7 @@ const App = Client<GState>({
   game: Expedition,
   board: Board,
   numPlayers: 2,
-  debug: true,
+  debug: { impl: Debug },
 });
 
 createRoot(document.getElementById('root')!).render(<App />);
