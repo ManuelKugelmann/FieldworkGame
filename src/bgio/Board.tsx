@@ -4,7 +4,7 @@ import { enumerate, botAction } from '../game';
 import type { GState } from '../game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, type Action,
+  actionLabel, describeTile, sampleChips, logToasts, type Action, type Toast,
 } from '../render';
 
 // bgio React board. Same shared renderer as the Canvas viewer (terrain, paths,
@@ -45,11 +45,29 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // toasts: surface fresh G.log outcomes (catalogue success/fail/stay/flee/destroyed, publishes, events)
+  const [toasts, setToasts] = useState<{ id: number; t: Toast }[]>([]);
+  const lastLog = useRef<number>(G.log.length);
+  const nextId = useRef(0);
+  useEffect(() => {
+    if (lastLog.current > G.log.length) lastLog.current = 0;   // new match → log reset
+    const fresh = logToasts(lastLog.current, G.log);
+    lastLog.current = G.log.length;
+    if (!fresh.length) return;
+    const items = fresh.map((t) => ({ id: nextId.current++, t }));
+    setToasts((prev) => [...prev, ...items].slice(-5));
+    const timers = items.map((it) => window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== it.id)), 2400));
+    return () => timers.forEach(clearTimeout);
+  }, [G.log.length]);
+
   const cur = G.players[ctx.currentPlayer];
   const tile = G.map[G.players[seat].pos];
 
   return (
     <div>
+      <div className="toasts">
+        {toasts.map(({ id, t }) => <div key={id} className={`toast ${t.kind}`}>{t.text}</div>)}
+      </div>
       <h1>Expedition: Verdant Prime</h1>
       <div className="sub">
         bgio frontend — full state inspection (Debug panel ↘) &amp; click-to-play ·{' '}

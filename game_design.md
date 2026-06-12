@@ -46,7 +46,7 @@ Validation uses a **dry graph** (river = hard barrier) so the centre crossing st
 ## Core pipeline
 
 1. **Discover** — entering a tile reveals **finds** drawn from that terrain's **fixed, finite pool** (without replacement). Carry is capped at `CARRY_SLOTS = 4`.
-2. **Catalogue** — 1 AP + **2d6 ≥ `CATALOGUE_DC` (7)** (+ gear bonus). Success → a sample in your carry; failure → the find is lost (field attrition is the only failure).
+2. **Catalogue** — 1 AP + **2d6 ≥ `CATALOGUE_DC` (7)** (+ gear bonus). Outcome tiers: **≥ DC → collected** (sample in your carry); **= DC−1 → stayed** (just missed — the find remains for another attempt); **below → fled** (fauna escapes) or **destroyed** (everything else lost). Outcomes surface as **toasts** (success/fail/effect) in both frontends.
 3. **Publish (research)** — at a **hub** (or *anywhere* during the lab season): assemble a **set** from your owned samples; you may **cite at most `MAX_CITE` (1)** missing discovery from another player's published pool. Owned samples used move into **your published pool** (citable by others). Reward is **flat** — no citation penalty, no standalone bonus.
 
 **Patterns:** `triple` (3 of one discipline → 4 prestige / 2 money), `rainbow` (1 of each of the 4 disciplines → 7 / 3).

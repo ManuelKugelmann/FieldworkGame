@@ -5,6 +5,33 @@ import type { GState, Tile, Discovery } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
+// ---- toasts: classify fresh G.log lines into transient success/fail/info notices ----
+export interface Toast { text: string; kind: 'good' | 'bad' | 'info'; }
+const EVENT_TEXT: Record<string, string> = {
+  tailwind: 'Tailwind · +1 AP', cache: 'Cache · +2$', grant: 'Grant · +3$', calm: 'Calm',
+  rockslide: 'Rockslide!', washout: 'Washout · bridge severed', monsoon: 'Monsoon brewing',
+};
+export function classifyLog(line: string): Toast | null {
+  if (line.startsWith('catalogue ')) {
+    const p = line.split(' '), tag = p[1], res = p[p.length - 1];
+    if (res === 'collected') return { text: `Catalogued ${tag}`, kind: 'good' };
+    if (res === 'stayed') return { text: `${tag} stayed — try again`, kind: 'info' };
+    if (res === 'fled') return { text: `${tag} fled`, kind: 'bad' };
+    if (res === 'destroyed') return { text: `${tag} destroyed`, kind: 'bad' };
+    return null;
+  }
+  if (line.startsWith('publish ')) { const m = line.match(/publish (\w+).*?(\+\d+P)/); return { text: m ? `Published ${m[1]} ${m[2]}` : 'Published', kind: 'good' }; }
+  if (line.startsWith('buy gear')) return { text: 'Bought gear', kind: 'info' };
+  if (line.startsWith('helilift')) return { text: 'Helilift → base', kind: 'info' };
+  if (line.startsWith('event:')) { const id = line.slice(6).split(' ')[0]; const bad = id === 'rockslide' || id === 'washout' || id === 'monsoon'; return { text: EVENT_TEXT[id] ?? id, kind: bad ? 'bad' : 'info' }; }
+  return null;
+}
+export function logToasts(fromIdx: number, log: string[]): Toast[] {
+  const out: Toast[] = [];
+  for (let i = Math.max(0, fromIdx); i < log.length; i++) { const t = classifyLog(log[i]); if (t) out.push(t); }
+  return out;
+}
+
 export let CELL = 46;              // CSS px per tile — recomputed responsively in fitCanvas()
 export const MIN_CELL = 16;        // floor so the board stays usable on tiny viewports
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];

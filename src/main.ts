@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, type Action,
+  actionLabel, describeTile, sampleChips, logToasts, type Action, type Toast,
 } from './render';
 
 // ---- Canvas viewer + click-to-play. The bgio headless Client is the engine;
@@ -60,10 +60,27 @@ function botTick() {
   draw();
 }
 
+const toastBox = $('toasts');
+let lastLog = 0, toastInit = false;
+function syncToasts(G: GState) {
+  if (!toastInit) { lastLog = G.log.length; toastInit = true; return; }   // skip the setup backlog
+  if (lastLog > G.log.length) lastLog = 0;                                 // new match → log reset
+  for (const t of logToasts(lastLog, G.log)) showToast(t);
+  lastLog = G.log.length;
+}
+function showToast(t: Toast) {
+  const el = document.createElement('div');
+  el.className = `toast ${t.kind}`; el.textContent = t.text;
+  toastBox.appendChild(el);
+  while (toastBox.childElementCount > 5) toastBox.firstElementChild?.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 2200);
+}
+
 function draw() {
   const s = client.getState();
   if (!s) return;
   const { G, ctx } = s;
+  syncToasts(G);
   const cctx = fitCanvas(canvas, G);
   const legal = human.has(ctx.currentPlayer) && !ctx.gameover ? legalNow() : [];
   drawBoard(cctx, G, ctx, { hover, targets: spatialTargets(legal) });

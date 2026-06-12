@@ -290,9 +290,10 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   if (G.epilogue || p.ap < 1 || !tile.revealed || find < 0 || find >= tile.finds.length || p.samples.length >= CARRY_SLOTS) return INVALID_MOVE;  // carry cap
   p.ap -= 1;
   const roll = random.D6() + random.D6() + p.gear;   // gear steadies the dice
-  const d = tile.finds.splice(find, 1)[0];
-  if (roll >= CATALOGUE_DC) { p.samples.push(d); G.log.push(`catalogue ${d.type}${d.color} ${roll} ✓`); }
-  else G.log.push(`catalogue ${d.type}${d.color} ${roll} ✗ lost`);
+  const d = tile.finds[find], tag = `${d.type}${d.color}`;
+  if (roll >= CATALOGUE_DC) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll} ✓ collected`); }
+  else if (roll === CATALOGUE_DC - 1) G.log.push(`catalogue ${tag} ${roll} ◦ stayed`);   // just missed — the find stays for another attempt
+  else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
 };
 
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research+publish; may cite others' published discoveries
