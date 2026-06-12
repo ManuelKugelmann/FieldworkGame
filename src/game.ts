@@ -107,9 +107,10 @@ function genOnce(seed: number) {
   const linkS = (a: number, b: number) => { g[a].smallRivers |= dirBit(a, b); g[b].smallRivers |= dirBit(b, a); };  // brook edge (boat-only highway)
   const block = (a: number, b: number) => { g[a].blocked |= dirBit(a, b); g[b].blocked |= dirBit(b, a); };          // cliff edge (uncrossable)
 
-  // river: 4-connected vertical path (compact wander)
-  let col = 3 + Math.floor(rand() * 4); const river: number[] = [];
-  for (let r = 0; r < N; r++) { set(ix(r, col), 'water'); river.push(ix(r, col)); if (r < N - 1) { let nc = col + (rand() < 0.5 ? 0 : (rand() < 0.5 ? -1 : 1)); nc = Math.max(1, Math.min(N - 2, nc)); if (nc !== col) { set(ix(r, nc), 'water'); river.push(ix(r, nc)); } col = nc; } }
+  // river: 4-connected vertical path; trunk kept in the central column band so the road bridge lands in the centre quadrant
+  const wlo = Math.max(1, Math.ceil(N / 3)), whi = Math.min(N - 2, Math.floor(2 * N / 3));
+  let col = Math.max(wlo, Math.min(whi, Math.floor(N / 2) - 1 + Math.floor(rand() * 3))); const river: number[] = [];
+  for (let r = 0; r < N; r++) { set(ix(r, col), 'water'); river.push(ix(r, col)); if (r < N - 1) { let nc = col + (rand() < 0.5 ? 0 : (rand() < 0.5 ? -1 : 1)); nc = Math.max(wlo, Math.min(whi, nc)); if (nc !== col) { set(ix(r, nc), 'water'); river.push(ix(r, nc)); } col = nc; } }
 
   // BIG BRANCH: a major fork off the trunk to an edge — full barrier (own crossing) → carves a 3rd section
   const branch: number[] = [];
@@ -130,7 +131,8 @@ function genOnce(seed: number) {
   // CROSSINGS: only the CENTRE road bridge is defined; foot bridges land on RANDOM river tiles (some cuts get none → boat-only)
   const allRiver = [...river, ...branch];
   const dc = (i: number) => Math.abs(((i / N) | 0) - N / 2) + Math.abs((i % N) - N / 2);
-  const ctr = river.slice().sort((a, b) => dc(a) - dc(b))[0];   // road crossing must be on the TRUNK (road gen assumes a vertical cut)
+  const centralRow = river.filter(i => { const r = (i / N) | 0; return r >= N / 3 && r <= 2 * N / 3; });   // pin the bridge to the centre quadrant
+  const ctr = (centralRow.length ? centralRow : river).slice().sort((a, b) => dc(a) - dc(b))[0];   // on the TRUNK (road gen assumes a vertical cut)
   g[ctr].bridge = 'road'; const bridges = [ctr];
   const cand = allRiver.filter(i => i !== ctr);                    // exactly 2 foot crossings on random river tiles
   for (let k = 0; k < 2 && cand.length; k++) { const i = cand.splice(Math.floor(rand() * cand.length), 1)[0]; g[i].bridge = 'foot'; bridges.push(i); }
@@ -142,7 +144,8 @@ function genOnce(seed: number) {
   link(prev, bridges[0]);                                            // road onto the central bridge (W edge)
   const eastC = bcol + 1; if (eastC < N && !g[ix(baseRow, eastC)]) { set(ix(baseRow, eastC), 'road'); link(bridges[0], ix(baseRow, eastC)); }
   const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].terrain === 'road') a.push(i); return a; };
-  for (let b = 0; b < 3; b++) { const rc = roadCells(); let i = rc[Math.floor(rand() * rc.length)]; for (let s = 0; s < 3; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, 'road'); link(i, j); i = j; } }
+  const branchN = 3 + Math.round((N - 10) / 2);   // more, longer road branches on bigger boards
+  for (let b = 0; b < branchN; b++) { const rc = roadCells(); let i = rc[Math.floor(rand() * rc.length)]; for (let s = 0; s < 5; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, 'road'); link(i, j); i = j; } }
 
   // flood wild, carve forest + rocky + grassland (all passable land; rocky moves at 2 AP just like wild, bushwhack)
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'wild');
@@ -222,7 +225,9 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   const allLand: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'wild' || g[i].terrain === 'forest') allLand.push(i);
   const dist = (a: number, b: number) => Math.abs(((a / N) | 0) - ((b / N) | 0)) + Math.abs((a % N) - (b % N));
   g[base].hotspot = 'base';                                        // main hub — on the road
-  g[roads.filter(i => i !== base).sort((a, b) => dist(b, base) - dist(a, base))[0]].hotspot = 'village';   // road-reachable market
+  const rds = roads.filter(i => i !== base);                       // market sits MID-road, not at the far end
+  const maxD = Math.max(0, ...rds.map(i => dist(i, base))), mid = maxD / 2;
+  g[rds.slice().sort((a, b) => Math.abs(dist(a, base) - mid) - Math.abs(dist(b, base) - mid))[0]].hotspot = 'village';   // road-reachable market, near the middle of the road
   g[allLand.slice().sort((a, b) => dist(b, base) - dist(a, base))[0]].hotspot = 'remote';   // farthest frontier — may be isolated (reach by boat or skip)
   return true;
 }
