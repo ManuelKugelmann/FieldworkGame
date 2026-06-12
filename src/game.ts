@@ -20,7 +20,7 @@ export interface GState {
 }
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
-const DIM_MIN = 10, DIM_MAX = 15, START_AP = 4,  // 4 AP/round
+const DIM_MIN = 10, DIM_MAX = 15, ACTIVE_TILES = 110, START_AP = 4,  // fixed 15×15 footprint, ~110 tiles kept active (rest void) → consistent size + spread  // 4 AP/round
   COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, HELILIFT_COST = 12;  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
 const RICH: Record<Terrain, number> = { road: 1, grassland: 1, wild: 3, forest: 2, rocky: 3, water: 0, void: 0 };  // rocky = geology-rich; grassland = sparse
@@ -166,21 +166,26 @@ function genOnce(seed: number) {
     const k = 1 + (rand() < 0.5 ? 0 : 1);
     for (let n2 = 0; n2 < k && cand.length; n2++) block(i, cand.splice(Math.floor(rand() * cand.length), 1)[0]);
   }
-  // IRREGULAR EDGES: nibble void bays into the outer ring (plain land only; validation guards connectivity, reseeding if a bite isolates play)
-  const voidable = (i: number) => isLand(i) && !g[i].hotspot && g[i].roads === 0 && g[i].paths === 0 && g[i].smallRivers === 0;
-  const onBorder = (i: number) => { const r = (i / N) | 0, c = i % N; return r === 0 || c === 0 || r === N - 1 || c === N - 1; };
-  const bites = Math.round((3 + Math.floor(rand() * 5)) * scale);
-  for (let b = 0; b < bites; b++) {
-    const starts: number[] = []; for (let i = 0; i < N * N; i++) if (onBorder(i) && voidable(i)) starts.push(i);
-    if (!starts.length) break;
-    let i = starts[Math.floor(rand() * starts.length)]; const blob = 1 + Math.floor(rand() * 3);
-    for (let s = 0; s < blob && voidable(i); s++) { set(i, 'void'); const o = nbrs(i).filter(j => voidable(j)); if (!o.length) break; i = o[Math.floor(rand() * o.length)]; }
+  // STATIC SIZE: keep ~ACTIVE_TILES cells in a round-robin blob grown from the centre bridge (water/roads always kept); void the rest of the land → consistent size, 15×15 spread, gaps
+  const passable = (a: number, b: number) => {                          // anticipates play connectivity: bridges connect, open water blocks
+    if (onBlocked(g, a, b) || isVoid(g[a]) || isVoid(g[b])) return false;
+    if (g[a].bridge || g[b].bridge) return true;
+    return !(plainRiver(g[a]) || plainRiver(g[b]));
+  };
+  let fixed = 0; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'water' || g[i].terrain === 'road' || g[i].bridge) fixed++;
+  let budget = ACTIVE_TILES - fixed;
+  const keepLand = new Set<number>(), bq = [bridges[0]], bseen = new Set<number>([bridges[0]]);   // BFS = even round-robin growth from the centre
+  while (bq.length) {
+    const u = bq.shift()!;
+    if (isLand(u) && budget > 0 && !keepLand.has(u)) { keepLand.add(u); budget--; }
+    for (const v of nbrs(u)) if (!bseen.has(v) && passable(u, v)) { bseen.add(v); bq.push(v); }
   }
-  placeHotspots(g, base);   // after cliffs + void so the base-reachable forage guard accounts for them; before footpaths so the remote base seeds trails
+  for (let i = 0; i < N * N; i++) if (isLand(i) && !keepLand.has(i)) set(i, 'void');
+  placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
   // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + some road trailheads; trails fizzle out anywhere
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
-  for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water' && !(g[fb].blocked & dirBit(fb, j))) linkP(fb, j);
+  for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water' && g[j].terrain !== 'void' && !(g[fb].blocked & dirBit(fb, j))) linkP(fb, j);
   const roadAll: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'road') roadAll.push(i);
   const seeds = [...footBr]; for (let k = 0; k < 2 && roadAll.length; k++) seeds.push(roadAll[Math.floor(rand() * roadAll.length)]);
   const remote = g.findIndex(t => t && t.hotspot === 'remote'); if (remote >= 0) seeds.push(remote);
@@ -488,7 +493,7 @@ export const Expedition: Game<GState> = {
   minPlayers: 2, maxPlayers: 4,
   setup: ({ ctx, random }: any) => {
     const seed = random ? (Math.floor(random.Number() * 1e9) || MAP_SEED) : MAP_SEED;   // per-match map+deck variety
-    const dim = DIM_MIN + (random ? Math.floor(random.Number() * (DIM_MAX - DIM_MIN + 1)) : 0);   // 10..15 square
+    const dim = DIM_MAX;   // fixed 15×15 footprint; ~ACTIVE_TILES tiles kept active for a consistent size + spread
     const { map, start } = generateMap(seed, dim);
     const colorRand = prng((seed ^ 0x5bd1e995) >>> 0);   // deterministic per-match colour stream (independent of type)
     map[start].revealed = true;
