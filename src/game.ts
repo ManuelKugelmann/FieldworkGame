@@ -144,8 +144,8 @@ function genOnce(seed: number) {
 
   // roads: ONE connected edge-graph laid as an OVERLAY on a land base (grass/wild/rock); a road cell = one carrying a road edge
   const roadBase = (): Terrain => (['grassland', 'wild', 'rocky'] as Terrain[])[Math.floor(rand() * 3)];
-  const baseRow = (bridges[0] / N) | 0, bcol = bridges[0] % N, base = ix(baseRow, 0); set(base, roadBase());
-  let prev = base;
+  const baseRow = (bridges[0] / N) | 0, bcol = bridges[0] % N, anchor = ix(baseRow, 0); set(anchor, roadBase());   // build the road from the left edge…
+  let prev = anchor;
   for (let c = 1; c < bcol; c++) { const i = ix(baseRow, c); if (g[i] && g[i].terrain === 'water') break; if (!g[i]) set(i, roadBase()); link(prev, i); prev = i; }
   link(prev, bridges[0]);                                            // road onto the central bridge (W edge)
   const eastC = bcol + 1; if (eastC < N && !g[ix(baseRow, eastC)]) { set(ix(baseRow, eastC), roadBase()); link(bridges[0], ix(baseRow, eastC)); }
@@ -181,6 +181,9 @@ function genOnce(seed: number) {
     for (const v of nbrs(u)) if (!bseen.has(v) && passable(u, v)) { bseen.add(v); bq.push(v); }
   }
   for (let i = 0; i < N * N; i++) if (isLand(i) && g[i].roads === 0 && !keepLand.has(i)) set(i, 'void');   // never void a road cell
+  // …but put the BASE hub on the most central road cell (a land road, not a bridge), not the edge
+  let base = anchor, bd = Infinity;
+  for (let i = 0; i < N * N; i++) if (g[i].roads !== 0 && !g[i].bridge) { const d = dc(i); if (d < bd) { bd = d; base = i; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
   // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + some road trailheads; trails fizzle out anywhere
