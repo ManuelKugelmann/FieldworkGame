@@ -2,6 +2,7 @@
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
 import type { GState, Tile, Discovery } from './game';
+import { targetAP } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -214,15 +215,22 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     carGlyph(cctx, c * CELL, r * CELL, v.driver !== null ? PLAYER_COLOR[+v.driver % 4] : '#8a8f86');
   }
 
-  // 5) legal-target rings (solid = walk, dashed = drive); per-tile AP cost is shown globally via tile darkness
+  // 5) legal-target rings (solid = walk, dashed = drive) + AP cost label (fractional for the car)
   if (targets) {
+    cctx.textBaseline = 'top';
+    cctx.font = `bold ${Math.max(9, CELL * 0.28)}px ui-monospace, monospace`;
     for (const [t, a] of targets) {
-      const c = t % G.cols, r = (t / G.cols) | 0;
+      const c = t % G.cols, r = (t / G.cols) | 0, x = c * CELL, y = r * CELL;
       cctx.strokeStyle = '#ffd24a'; cctx.lineWidth = 2.5;
       cctx.setLineDash(a.move === 'drive' ? [4, 3] : []);
-      cctx.strokeRect(c * CELL + 3, r * CELL + 3, CELL - 6, CELL - 6);
+      cctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
+      cctx.setLineDash([]);
+      const ap = targetAP(G, ctxState.currentPlayer, a);
+      const label = Number.isInteger(ap) ? String(ap) : ap.toFixed(1);   // car costs are fractional (1 AP ÷ CAR_STEPS/tile)
+      cctx.fillStyle = 'rgba(0,0,0,0.8)'; cctx.fillText(label, x + CELL / 2 + 1, y + 4);
+      cctx.fillStyle = '#ffe27a'; cctx.fillText(label, x + CELL / 2, y + 3);
     }
-    cctx.setLineDash([]);
+    cctx.textBaseline = 'middle';
   }
 
   // 6) hover

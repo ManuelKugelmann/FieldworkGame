@@ -101,7 +101,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
             }}
           />
           <div className="legend">
-            {'gold ring = legal move   dashed ring = drive   tile darkness = move cost (dark = 2 AP bushwhack, bright = 1 AP)\n'}
+            {'gold ring = legal move (number = AP cost, fractional by car)   dashed ring = drive   tile darkness = move cost\n'}
             {'solid line = road   dashed line = path   dashed blue = brook (boat)   red bar = cliff   water = boat only\n'}
             {'H base  M village  R remote   ▫ = gear cache   ⛵ = boat   ▭ = car   dots = finds   ● = player'}
           </div>

@@ -47,6 +47,19 @@ const canBoat = (map: Tile[], a: number, b: number) => {           // BOAT graph
 const boatCost = (map: Tile[], a: number, b: number) =>             // water / brook / path / grassland step = 1 AP; portaging the boat over rough dry land = 2
   (plainRiver(map[a]) || plainRiver(map[b]) || onPath(map, a, b) || grass(map, a, b) || (map[a].smallRivers & dirBit(a, b))) ? 1 : 2;
 export const apCost = (G: GState, from: number, to: number, boat: boolean) => (boat ? boatCost : cost)(G.map, from, to);  // AP for a foot/boat step (UI cost hint)
+function roadStepDist(map: Tile[], from: number, to: number): number {   // road-edge BFS distance (for car cost)
+  if (from === to) return 0;
+  const seen = new Map<number, number>([[from, 0]]); const q = [from];
+  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; for (const v of nbrs(u)) if (!seen.has(v) && (map[u].roads & dirBit(u, v)) && !onBlocked(map, u, v)) { if (v === to) return d + 1; seen.set(v, d + 1); q.push(v); } }
+  return Infinity;
+}
+// AP a legal target costs, for the UI. Foot/boat = the step cost; car = fractional (1 AP buys CAR_STEPS road tiles)
+export function targetAP(G: GState, pid: string, a: { move?: string; args?: unknown[] }): number {
+  const p = G.players[pid];
+  if (a.move === 'drive') { const car = myVehicle(G, pid); const d = car ? roadStepDist(G.map, car.pos, a.args![0] as number) : Infinity; return Number.isFinite(d) ? d / CAR_STEPS : 1; }
+  if (a.move === 'move') return apCost(G, p.pos, a.args![0] as number, p.boat);
+  return 0;
+}
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
 const isHub = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // research+publish hubs (road base ≡ remote base)
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  // buy gear here (road-network services)
