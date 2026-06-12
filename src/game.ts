@@ -9,7 +9,7 @@ export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base, remote
 export type EquipKind = 'gear';                       // m4 entity: gear cached on a tile (droppable/pickup-able)
 export interface Equip { kind: EquipKind; }
 export interface Vehicle { pos: number; driver: string | null; }  // car: a positioned entity you board/leave; drive moves both
-export interface Tile { terrain: Terrain; bridge?: Bridge; arm?: boolean; roads: number; paths: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; }  // roads = bitmask N1 E2 S4 W8
+export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; }  // roads/paths/smallRivers(brooks)/blocked(cliffs) = edge bitmasks N1 E2 S4 W8
 export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; gear: number; }  // gear = catalogue-roll bonus
 export interface GState {
   players: Record<string, PlayerS>;
@@ -23,20 +23,18 @@ const N = 10, START_AP = 4,  // 4 AP/round
   COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, HELILIFT_COST = 12;  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
 const RICH: Record<Terrain, number> = { road: 1, wild: 3, forest: 2, rocky: 0, water: 0 };
-const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge && !t.arm;  // main river = hard barrier
-const isArm = (t: Tile) => t.terrain === 'water' && !!t.arm;                    // thin side arm: fordable + boat highway
+const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const dirBit = (a: number, b: number) => b === a - N ? 1 : b === a + N ? 4 : b === a + 1 ? 2 : 8;  // N1 E2 S4 W8
 const onPath = (map: Tile[], a: number, b: number) => ((map[a].roads | map[a].paths) & dirBit(a, b)) !== 0;  // road OR foot edge
-// board/leave a bridge only via an edge; land↔land always allowed (boat↔rocky exit-block = m4)
-const canMoveDry = (map: Tile[], a: number, b: number) => plainRiver(map[a]) || plainRiver(map[b]) ? false : (map[a].bridge || map[b].bridge) ? onPath(map, a, b) : true;  // river = hard barrier (map validation)
-const canMove = (map: Tile[], a: number, b: number) => {           // play graph: arms fordable/boatable, main river by boat
-  const ta = map[a], tb = map[b];
-  if (ta.bridge || tb.bridge) return onPath(map, a, b);            // bridge: board/leave via an edge
-  const aR = plainRiver(ta), bR = plainRiver(tb);                  // main-river water (not arm)
-  if (aR !== bR && (aR ? tb : ta).terrain === 'rocky') return false;  // boat↔rocky exit-block (main river only)
-  return true;                                                     // land↔land/arm, arm↔arm, river↔river/non-rocky
+const onBlocked = (map: Tile[], a: number, b: number) => (map[a].blocked & dirBit(a, b)) !== 0;  // cliff edge: uncrossable by anyone (foot/car/boat)
+// board/leave a bridge only via an edge; land↔land always allowed; cliffs hard-block everyone
+const canMoveDry = (map: Tile[], a: number, b: number) => onBlocked(map, a, b) || plainRiver(map[a]) || plainRiver(map[b]) ? false : (map[a].bridge || map[b].bridge) ? onPath(map, a, b) : true;  // river = hard barrier (map validation)
+const canMove = (map: Tile[], a: number, b: number) => {           // play graph (foot): bridges via edge; water still wadeable until the boat lands (m6.2)
+  if (onBlocked(map, a, b)) return false;                          // cliff = hard barrier for everyone
+  if (map[a].bridge || map[b].bridge) return onPath(map, a, b);    // bridge: board/leave via an edge
+  return true;                                                     // land↔land/brook, land↔river, river↔river (no rocky exit constraint)
 };
-const cost = (map: Tile[], a: number, b: number) => (onPath(map, a, b) || (isArm(map[a]) && isArm(map[b]))) ? 1 : 2;  // path or arm-highway = 1 AP; ford/bushwhack/open-water = 2
+const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 1 : 2;  // road/foot edge = 1 AP; ford/bushwhack/open-water = 2 (brook discount is boat-only, m6.2)
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
 const isHub = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // research+publish hubs (road base ≡ remote base)
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  // buy gear here (road-network services)
@@ -59,7 +57,7 @@ function nbrs(i: number): number[] { const r = (i / N) | 0, c = i % N, o: number
 function roadReach(map: Tile[], from: number, maxSteps: number): number[] {   // car: road cells within maxSteps road edges
   const seen = new Map<number, number>([[from, 0]]); const q = [from]; const out: number[] = [];
   while (q.length) { const u = q.shift()!; const d = seen.get(u)!; if (d >= maxSteps) continue;
-    for (const v of nbrs(u)) if (!seen.has(v) && (map[u].roads & dirBit(u, v))) { seen.set(v, d + 1); out.push(v); q.push(v); } }
+    for (const v of nbrs(u)) if (!seen.has(v) && (map[u].roads & dirBit(u, v)) && !onBlocked(map, u, v)) { seen.set(v, d + 1); out.push(v); q.push(v); } }
   return out;
 }
 function compMove(map: Tile[], nodes: number[]): number {            // components under the movement rule
@@ -76,10 +74,11 @@ function compTerrain(map: Tile[], pred: (t: Tile) => boolean) {       // plain 4
 
 function genOnce(seed: number) {
   const rand = prng(seed), g: Tile[] = new Array(N * N).fill(null as any);
-  const set = (i: number, t: Terrain, bridge?: Bridge) => { g[i] = { terrain: t, bridge, roads: 0, paths: 0, richness: RICH[t], revealed: false, finds: [], equipment: [] }; };
+  const set = (i: number, t: Terrain, bridge?: Bridge) => { g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, richness: RICH[t], revealed: false, finds: [], equipment: [] }; };
   const link = (a: number, b: number) => { g[a].roads |= dirBit(a, b); g[b].roads |= dirBit(b, a); };   // road edge
   const linkP = (a: number, b: number) => { g[a].paths |= dirBit(a, b); g[b].paths |= dirBit(b, a); };  // foot edge
-  const mkArm = (i: number) => { set(i, 'water'); g[i].arm = true; };   // thin side-arm cell
+  const linkS = (a: number, b: number) => { g[a].smallRivers |= dirBit(a, b); g[b].smallRivers |= dirBit(b, a); };  // brook edge (boat-only highway)
+  const block = (a: number, b: number) => { g[a].blocked |= dirBit(a, b); g[b].blocked |= dirBit(b, a); };          // cliff edge (uncrossable)
 
   // river: 4-connected vertical path (compact wander)
   let col = 3 + Math.floor(rand() * 4); const river: number[] = [];
@@ -99,14 +98,7 @@ function genOnce(seed: number) {
     if (cells.length >= 3) { cells.forEach(i => set(i, 'water')); branch.push(...cells); }   // commit only a real branch
   }
 
-  // thin side ARMS: branch off the river into a bank to isolate sections (fordable @2 AP; arm↔arm boat-highway @1 AP)
-  const armN = 1 + (rand() < 0.5 ? 0 : 1); let armsMade = 0;
-  for (let att = 0; att < 14 && armsMade < armN; att++) {
-    const br = river[2 + Math.floor(rand() * Math.max(1, river.length - 4))]; let r = (br / N) | 0, cc = br % N;
-    const dir = cc < N / 2 ? 1 : -1, len = 4 + Math.floor(rand() * 3), cells: number[] = [];
-    for (let s = 0; s < len; s++) { cc += dir; if (cc <= 0 || cc >= N - 1) break; if (rand() < 0.3) r = Math.max(0, Math.min(N - 1, r + (rand() < 0.5 ? -1 : 1))); const i = ix(r, cc); if (g[i]) break; cells.push(i); }
-    if (cells.length >= 2) { cells.forEach(mkArm); armsMade++; }   // keep only real-length arms
-  }
+  // (brooks are land-cell edge overlays now — laid after the land flood, near the footpaths)
 
   // CROSSINGS: only the CENTRE road bridge is defined; foot bridges land on RANDOM river tiles (some cuts get none → boat-only)
   const allRiver = [...river, ...branch];
@@ -129,19 +121,41 @@ function genOnce(seed: number) {
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'wild');
   const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'wild') set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'wild'); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };
   carve('forest', 5, 5); carve('rocky', 6, 4);
-  for (let i = 0; i < N * N; i++) if (g[i].terrain === 'rocky' && nbrs(i).every(j => g[j].terrain === 'water')) set(i, 'wild');  // no boat-unreachable rocky islands
-  placeHotspots(g, base);   // before footpaths so the remote base seeds trails
+  // CLIFFS: 1–2 uncrossable edges on some land tiles (plain land↔land only — never roads/water/bridges, so the laid networks stay intact)
+  const isLand = (i: number) => g[i].terrain === 'wild' || g[i].terrain === 'forest' || g[i].terrain === 'rocky';
+  for (let i = 0; i < N * N; i++) {
+    if (!isLand(i) || rand() >= 0.14) continue;                    // only some land tiles get cliffs
+    const cand = nbrs(i).filter(j => isLand(j) && !(g[i].roads & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
+    const k = 1 + (rand() < 0.5 ? 0 : 1);
+    for (let n2 = 0; n2 < k && cand.length; n2++) block(i, cand.splice(Math.floor(rand() * cand.length), 1)[0]);
+  }
+  placeHotspots(g, base);   // after cliffs so the base-reachable forage guard accounts for them; before footpaths so the remote base seeds trails
 
   // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + some road trailheads; trails fizzle out anywhere
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
-  for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water') linkP(fb, j);
+  for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water' && !(g[fb].blocked & dirBit(fb, j))) linkP(fb, j);
   const roadAll: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'road') roadAll.push(i);
   const seeds = [...footBr]; for (let k = 0; k < 2 && roadAll.length; k++) seeds.push(roadAll[Math.floor(rand() * roadAll.length)]);
   const remote = g.findIndex(t => t && t.hotspot === 'remote'); if (remote >= 0) seeds.push(remote);
   for (const sd of seeds) {
-    const o0 = nbrs(sd).filter(j => g[j].terrain === 'wild' || g[j].terrain === 'forest'); if (!o0.length) continue;
+    const o0 = nbrs(sd).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
     let i = o0[Math.floor(rand() * o0.length)]; linkP(sd, i);
-    for (let s = 0; s < 4; s++) { const opts = nbrs(i).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[i].paths & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }
+    for (let s = 0; s < 4; s++) { const opts = nbrs(i).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }
+
+  // BROOKS: boat-only side-channels — mouth at a river tile, then link consecutive land cells inward (laid as edge overlays, not water)
+  let brooksMade = 0; const brookN = 1 + (rand() < 0.5 ? 0 : 1);
+  for (let att = 0; att < 14 && brooksMade < brookN; att++) {
+    const rt = allRiver[Math.floor(rand() * allRiver.length)];
+    const mouths = nbrs(rt).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[rt].blocked & dirBit(rt, j)));
+    if (!mouths.length) continue;
+    let i = mouths[Math.floor(rand() * mouths.length)]; linkS(rt, i); let len = 1;
+    for (let s = 0; s < 4; s++) {
+      const opts = nbrs(i).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[i].smallRivers & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
+      if (!opts.length) break;
+      const j = opts[Math.floor(rand() * opts.length)]; linkS(i, j); i = j; len++;
+    }
+    if (len >= 2) brooksMade++;
+  }
 
   return { g, bridges, base };
 }
@@ -149,7 +163,7 @@ function genOnce(seed: number) {
 function compRoad(g: Tile[]) {                                       // road components via EXPLICIT edges (not adjacency)
   const cells: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'road' || g[i].bridge === 'road') cells.push(i);
   const set = new Set(cells), seen = new Set<number>(); let c = 0;
-  for (const s of cells) { if (seen.has(s)) continue; c++; const st = [s]; seen.add(s); while (st.length) { const x = st.pop()!; for (const y of nbrs(x)) if (set.has(y) && !seen.has(y) && (g[x].roads & dirBit(x, y))) { seen.add(y); st.push(y); } } }
+  for (const s of cells) { if (seen.has(s)) continue; c++; const st = [s]; seen.add(s); while (st.length) { const x = st.pop()!; for (const y of nbrs(x)) if (set.has(y) && !seen.has(y) && (g[x].roads & dirBit(x, y)) && !onBlocked(g, x, y)) { seen.add(y); st.push(y); } } }
   return { c, cells };
 }
 function validate(g: Tile[], bridges: number[]): string | null {

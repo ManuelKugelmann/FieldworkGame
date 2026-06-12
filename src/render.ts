@@ -12,7 +12,8 @@ export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#d8b15a', 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   road: '#5b5340', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79',
 };
-const ARM_FILL = '#2f6f9a';
+const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
+const CLIFF_LINE = '#e2553a';      // impassable cliff edge
 const BRIDGE_FILL = '#7a6a44';
 const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R' };
@@ -60,8 +61,10 @@ export function actionLabel(a: Action, tile: Tile): string | null {
 
 export function describeTile(G: GState, i: number): string {
   const t = G.map[i];
-  const bits = [`#${i}`, t.bridge ? `${t.bridge} bridge` : (t.terrain === 'water' && t.arm ? 'river arm' : t.terrain)];
+  const bits = [`#${i}`, t.bridge ? `${t.bridge} bridge` : t.terrain];
   if (t.hotspot) bits.push(t.hotspot);
+  if (t.smallRivers) bits.push('brook');
+  if (t.blocked) bits.push('cliff edge');
   const car = G.vehicles.find(v => v.pos === i);
   if (car) bits.push(car.driver !== null ? `car (P${car.driver})` : 'car (empty)');
   if (t.equipment.length) bits.push(`${t.equipment.length} gear cached`);
@@ -84,6 +87,16 @@ function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, c
   cctx.stroke(); cctx.setLineDash([]);
 }
 
+// red bar drawn on the shared border between a & b = impassable cliff edge
+function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
+  const ca = a % G.cols, ra = (a / G.cols) | 0, cb = b % G.cols, rb = (b / G.cols) | 0;
+  cctx.strokeStyle = CLIFF_LINE; cctx.lineWidth = 3; cctx.setLineDash([]);
+  cctx.beginPath();
+  if (ra === rb) { const x = Math.max(ca, cb) * CELL; cctx.moveTo(x, ra * CELL + 6); cctx.lineTo(x, ra * CELL + CELL - 6); }   // vertical border (E/W)
+  else { const y = Math.max(ra, rb) * CELL; cctx.moveTo(ca * CELL + 6, y); cctx.lineTo(ca * CELL + CELL - 6, y); }            // horizontal border (N/S)
+  cctx.stroke();
+}
+
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
   const w = CELL * 0.34, h = CELL * 0.2, gx = x + CELL - w - 4, gy = y + 4;
   cctx.fillStyle = color; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1;
@@ -104,18 +117,26 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   // 1) tiles + fog
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
-    cctx.fillStyle = t.bridge ? BRIDGE_FILL : (t.terrain === 'water' && t.arm ? ARM_FILL : TERRAIN_FILL[t.terrain]);
+    cctx.fillStyle = t.bridge ? BRIDGE_FILL : TERRAIN_FILL[t.terrain];
     cctx.fillRect(x, y, CELL, CELL);
     if (!t.revealed) { cctx.fillStyle = 'rgba(5,8,5,0.55)'; cctx.fillRect(x, y, CELL, CELL); }
     cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.setLineDash([]);
     cctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
   }
 
-  // 2) movement graph: solid roads, dashed footpaths (E + S edges, drawn once)
+  // 2) movement graph: solid roads, dashed footpaths, dashed-blue brooks (boat); red bars = impassable cliffs (E + S edges, once)
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0;
-    if (c < G.cols - 1) { if (t.roads & 2) edge(cctx, i, i + 1, G, '#9a8757', 3, []); else if (t.paths & 2) edge(cctx, i, i + 1, G, '#84a684', 1.5, [3, 3]); }
-    if (r < G.rows - 1) { if (t.roads & 4) edge(cctx, i, i + G.cols, G, '#9a8757', 3, []); else if (t.paths & 4) edge(cctx, i, i + G.cols, G, '#84a684', 1.5, [3, 3]); }
+    if (c < G.cols - 1) {
+      if (t.roads & 2) edge(cctx, i, i + 1, G, '#9a8757', 3, []); else if (t.paths & 2) edge(cctx, i, i + 1, G, '#84a684', 1.5, [3, 3]);
+      if (t.smallRivers & 2) edge(cctx, i, i + 1, G, BROOK_LINE, 2, [2, 2]);
+      if (t.blocked & 2) borderBar(cctx, i, i + 1, G);
+    }
+    if (r < G.rows - 1) {
+      if (t.roads & 4) edge(cctx, i, i + G.cols, G, '#9a8757', 3, []); else if (t.paths & 4) edge(cctx, i, i + G.cols, G, '#84a684', 1.5, [3, 3]);
+      if (t.smallRivers & 4) edge(cctx, i, i + G.cols, G, BROOK_LINE, 2, [2, 2]);
+      if (t.blocked & 4) borderBar(cctx, i, i + G.cols, G);
+    }
   }
 
   // 3) hotspots, discovery slots (find dots), dropped equipment
