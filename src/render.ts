@@ -2,6 +2,7 @@
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
 import type { GState, Tile, Discovery } from './game';
+import { apCost } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -208,13 +209,17 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     carGlyph(cctx, c * CELL, r * CELL, v.driver !== null ? PLAYER_COLOR[+v.driver % 4] : '#8a8f86');
   }
 
-  // 5) legal-target rings (solid = walk, dashed = drive)
+  // 5) legal-target cost hint (darker = more AP) + rings (solid = walk, dashed = drive)
   if (targets) {
+    const me = G.players[ctxState.currentPlayer];
     for (const [t, a] of targets) {
-      const c = t % G.cols, r = (t / G.cols) | 0;
+      const c = t % G.cols, r = (t / G.cols) | 0, x = c * CELL, y = r * CELL;
+      const ap = a.move === 'drive' ? 1 : (me ? apCost(G, me.pos, t, me.boat) : 1);   // drive = 1 AP/step
+      const alpha = Math.min(0.45, (ap - 1) * 0.26);                                   // 1 AP bright, each extra AP darker
+      if (alpha > 0) { cctx.fillStyle = `rgba(0,0,0,${alpha})`; cctx.fillRect(x, y, CELL, CELL); }
       cctx.strokeStyle = '#ffd24a'; cctx.lineWidth = 2.5;
       cctx.setLineDash(a.move === 'drive' ? [4, 3] : []);
-      cctx.strokeRect(c * CELL + 3, r * CELL + 3, CELL - 6, CELL - 6);
+      cctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
     }
     cctx.setLineDash([]);
   }

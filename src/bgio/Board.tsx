@@ -68,7 +68,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
       <div className="toasts">
         {toasts.map(({ id, t }) => <div key={id} className={`toast ${t.kind}`}>{t.text}</div>)}
       </div>
-      <h1>Expedition: Verdant Prime — bgio player frontend</h1>
+      <h1>Expedition: Verdant Prime <span className="badge">bgio player · Debug Inspector</span></h1>
       <div className="sub">
         click-to-play · the <strong>Debug Inspector</strong> (boardgame.io state browser / replay) is docked on the right → ·{' '}
         <a href="index.html">lean canvas viewer ↗</a>
@@ -101,8 +101,8 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
             }}
           />
           <div className="legend">
-            {'gold ring = walk   dashed ring = drive   solid line = road   dashed line = path\n'}
-            {'dashed blue = brook (boat)   red bar = cliff (impassable)   water = boat only\n'}
+            {'gold ring = legal move   darker ring tile = more AP   dashed ring = drive\n'}
+            {'solid line = road   dashed line = path   dashed blue = brook (boat)   red bar = cliff   water = boat only\n'}
             {'H base  M village  R remote   ▫ = gear cache   ⛵ = boat   ▭ = car   dots = finds   ● = player'}
           </div>
         </div>

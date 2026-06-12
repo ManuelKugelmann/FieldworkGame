@@ -128,8 +128,8 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
 
   $('log').textContent = G.log.slice(-30).join('\n');
   $('legend').textContent =
-    'gold ring = walk   dashed ring = drive   solid line = road   dashed line = path\n' +
-    'dashed blue = brook (boat)   red bar = cliff (impassable)   water = boat only\n' +
+    'gold ring = legal move   darker ring tile = more AP   dashed ring = drive\n' +
+    'solid line = road   dashed line = path   dashed blue = brook (boat)   red bar = cliff   water = boat only\n' +
     'H base  M village  R remote   ▫ = gear cache   ⛵ = boat   ▭ = car   dots = finds   ● = player';
 }
 
