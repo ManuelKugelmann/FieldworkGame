@@ -71,9 +71,15 @@ const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   wild:      { bot: 5, zoo: 4, arch: 1, geo: 1 },   // high botany + zoology; few (valuable) geo + archaeology
   rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
 };
-function buildPool(t: Terrain): Discovery[] {
-  const out: Discovery[] = [], w = WEIGHTS[t]!;
-  (Object.keys(w) as DType[]).forEach(k => { for (let i = 0; i < w[k] * 4; i++) out.push({ type: k, color: i % COLORS }); });
+const BIOME_COLOR: Partial<Record<Terrain, number>> = { road: 0, grassland: 2, wild: 2, forest: 1, rocky: 3 };  // each biome leans toward a signature colour
+function buildPool(t: Terrain, rand: () => number): Discovery[] {
+  const out: Discovery[] = [], w = WEIGHTS[t]!, bias = BIOME_COLOR[t];
+  (Object.keys(w) as DType[]).forEach(k => {
+    for (let i = 0; i < w[k] * 4; i++) {
+      const color = (bias !== undefined && rand() < 0.35) ? bias : Math.floor(rand() * COLORS);   // colour is independent of type, only slightly biome-leaning
+      out.push({ type: k, color });
+    }
+  });
   return out;
 }
 
@@ -484,6 +490,7 @@ export const Expedition: Game<GState> = {
     const seed = random ? (Math.floor(random.Number() * 1e9) || MAP_SEED) : MAP_SEED;   // per-match map+deck variety
     const dim = DIM_MIN + (random ? Math.floor(random.Number() * (DIM_MAX - DIM_MIN + 1)) : 0);   // 10..15 square
     const { map, start } = generateMap(seed, dim);
+    const colorRand = prng((seed ^ 0x5bd1e995) >>> 0);   // deterministic per-match colour stream (independent of type)
     map[start].revealed = true;
     map[start].equipment.push({ kind: 'boat' });   // one shared boat, cached at base (pick it up to cross water)
     return {
@@ -491,7 +498,7 @@ export const Expedition: Game<GState> = {
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0, boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
-      pools: { road: buildPool('road'), grassland: buildPool('grassland'), wild: buildPool('wild'), forest: buildPool('forest'), rocky: buildPool('rocky') },
+      pools: { road: buildPool('road', colorRand), grassland: buildPool('grassland', colorRand), wild: buildPool('wild', colorRand), forest: buildPool('forest', colorRand), rocky: buildPool('rocky', colorRand) },
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },

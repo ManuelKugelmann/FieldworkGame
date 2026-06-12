@@ -83,7 +83,7 @@ function draw() {
   syncToasts(G);
   const cctx = fitCanvas(canvas, G);
   const legal = human.has(ctx.currentPlayer) && !ctx.gameover ? legalNow() : [];
-  drawBoard(cctx, G, ctx, { hover, targets: spatialTargets(legal) });
+  drawBoard(cctx, G, ctx, { hover, targets: spatialTargets(legal, G, ctx.currentPlayer) });
   renderHud(G, ctx, legal);
 }
 
@@ -142,7 +142,7 @@ canvas.addEventListener('click', e => {
   const rect = canvas.getBoundingClientRect();
   const i = tileAt(e.clientX - rect.left, e.clientY - rect.top, s.G);
   if (i < 0) return;
-  const a = spatialTargets(legalNow()).get(i);
+  const a = spatialTargets(legalNow(), s.G, s.ctx.currentPlayer).get(i);
   if (a) dispatch(a);
 });
 

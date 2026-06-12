@@ -23,7 +23,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
   const seat = playerID ?? ctx.currentPlayer;
   const myTurn = !ctx.gameover && seat === ctx.currentPlayer;
   const legal: Action[] = myTurn ? (enumerate(G, ctx) as Action[]) : [];
-  const targets = spatialTargets(legal);
+  const targets = spatialTargets(legal, G, ctx.currentPlayer);
 
   function dispatch(a: Action) {
     if (a.move) (moves as Record<string, (...x: unknown[]) => void>)[a.move](...(a.args ?? []));
@@ -120,6 +120,10 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
             <h2>Your actions</h2>
             <div className="bar">{actionsContent}</div>
           </div>
+          <div className="panel inspectwrap">
+            <h2>Inspect</h2>
+            <div id="inspect" dangerouslySetInnerHTML={{ __html: hover < 0 ? 'hover a tile' : describeTile(G, hover) }} />
+          </div>
         </div>
         <div className="side">
           <div className="status">
@@ -154,11 +158,6 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
           <div className="panel actions-desktop">
             <h2>Your actions</h2>
             <div className="bar">{actionsContent}</div>
-          </div>
-
-          <div className="panel">
-            <h2>Inspect</h2>
-            <div id="inspect" dangerouslySetInnerHTML={{ __html: hover < 0 ? 'hover a tile' : describeTile(G, hover) }} />
           </div>
 
           <div className="panel">

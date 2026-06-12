@@ -75,11 +75,17 @@ export const tileAt = (px: number, py: number, G: GState): number => {
   return r * G.cols + c;
 };
 
-// tile index -> the spatial action (move/drive) that lands there; move wins ties
-export function spatialTargets(actions: Action[]): Map<number, Action> {
+// tile index -> the CHEAPEST spatial action (move/drive) that lands there (e.g. a 0.3-AP car hop beats a 1-AP foot step)
+export function spatialTargets(actions: Action[], G: GState, pid: string): Map<number, Action> {
+  const best = new Map<number, { a: Action; ap: number }>();
+  for (const a of actions) {
+    if (a.move !== 'move' && a.move !== 'drive') continue;
+    const t = a.args![0] as number, ap = targetAP(G, pid, a);
+    const cur = best.get(t);
+    if (!cur || ap < cur.ap) best.set(t, { a, ap });   // lower AP cost takes precedence
+  }
   const m = new Map<number, Action>();
-  for (const a of actions) if (a.move === 'drive') m.set(a.args![0] as number, a);
-  for (const a of actions) if (a.move === 'move') m.set(a.args![0] as number, a);
+  for (const [t, v] of best) m.set(t, v.a);
   return m;
 }
 
