@@ -93,7 +93,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   const seat = human.has(ctx.currentPlayer) ? 'your move' : 'bot thinking…';
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
-    : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap} AP left · 🌧 ${G.monsoon}/4`;
+    : `${phase} · Turn: P${ctx.currentPlayer} (${seat}) · ${cur.ap} AP left · 🌧 ${G.monsoon}/4`;
 
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';
@@ -128,7 +128,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
 
   $('log').textContent = G.log.slice(-30).join('\n');
   $('legend').textContent =
-    'gold ring = legal move   darker ring tile = more AP   dashed ring = drive\n' +
+    'gold ring = legal move   dashed ring = drive   tile darkness = move cost (dark = 2 AP bushwhack, bright = 1 AP)\n' +
     'solid line = road   dashed line = path   dashed blue = brook (boat)   red bar = cliff   water = boat only\n' +
     'H base  M village  R remote   ▫ = gear cache   ⛵ = boat   ▭ = car   dots = finds   ● = player';
 }
