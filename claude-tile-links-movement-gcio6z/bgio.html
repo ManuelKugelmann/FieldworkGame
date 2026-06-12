@@ -7,13 +7,14 @@
     <style>
       :root { color-scheme: dark; }
       body {
-        margin: 0; padding: 1.5rem;
+        margin: 0; padding: .5rem 1.25rem 1.25rem;
         background: #0b0f0a; color: #d6e4d0; border-top: 3px solid #2f9aa8;   /* teal = bgio player frontend + inspector */
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .25rem; }
-      .badge { font-size: .58rem; text-transform: uppercase; letter-spacing: .08em; padding: .12rem .4rem; border-radius: 3px; vertical-align: middle; margin-left: .5rem; background: #123034; color: #6fd3df; border: 1px solid #1f5a62; }
-      .sub { color: #6f8f70; font-size: .8rem; margin-bottom: 1rem; }
+      h1 { font-size: .92rem; font-weight: 600; margin: 0; display: inline-block; }
+      .badge { font-size: .56rem; text-transform: uppercase; letter-spacing: .08em; padding: .1rem .35rem; border-radius: 3px; vertical-align: middle; margin-left: .4rem; background: #123034; color: #6fd3df; border: 1px solid #1f5a62; }
+      .actions-mobile { display: none; }   /* on mobile, actions render directly under the board instead of in the side panel */
+      .sub { color: #6f8f70; font-size: .72rem; margin: .15rem 0 .5rem; }
       a { color: #7ad07a; }
       button {
         background: #16301a; color: #cfe9c8; border: 1px solid #2f5a34;
@@ -42,7 +43,9 @@
       .log { max-height: 28vh; overflow: auto; font-size: .72rem; color: #9fc69a; }
       .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
       .status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; }
-      .controls { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+      .controls { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: .5rem; }
+      @media (min-width: 820px) { .actions-desktop { display: block; } }
+      @media (max-width: 819px) { .actions-mobile { display: block; } .actions-desktop { display: none; } }
       .toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: .35rem; align-items: center; z-index: 50; pointer-events: none; }
       .toast { padding: .4rem .8rem; border-radius: 6px; font-size: .8rem; border: 1px solid #2f5a34; background: #16301a; color: #cfe9c8; box-shadow: 0 2px 10px rgba(0,0,0,.55); animation: toastIn .15s ease-out; }
       .toast.good { border-color: #3a7a3f; background: #14301a; color: #bdebbd; }
@@ -50,8 +53,8 @@
       .toast.info { border-color: #3f5f86; background: #14202f; color: #bcd2ec; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/bgio-Dt1B_N4g.js"></script>
-    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-CpITim3P.js">
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/bgio-DW2SM6mW.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-Djw7FKZ-.js">
   </head>
   <body>
     <div id="root"></div>
