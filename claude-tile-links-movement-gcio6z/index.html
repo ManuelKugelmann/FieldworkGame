@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Expedition: Verdant Prime</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; padding: 1.5rem;
+        background: #0b0f0a; color: #d6e4d0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .25rem; }
+      .sub { color: #6f8f70; font-size: .8rem; margin-bottom: 1rem; }
+      .controls { margin-bottom: 1rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+      label.seat { font-size: .78rem; color: #9fc69a; display: inline-flex; gap: .3rem; align-items: center; }
+      button {
+        background: #16301a; color: #cfe9c8; border: 1px solid #2f5a34;
+        padding: .4rem .8rem; border-radius: 4px; cursor: pointer; font: inherit;
+      }
+      button:hover { background: #1d3d22; }
+      button:disabled { opacity: .4; cursor: default; }
+      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; }
+      #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; }
+      .side { min-width: 16rem; max-width: 22rem; }
+      .panel { margin-bottom: 1rem; }
+      .panel h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
+      #actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+      #actions button { padding: .35rem .6rem; font-size: .8rem; }
+      .pcard { font-size: .78rem; padding: .35rem .5rem; border: 1px solid #1d3d22; border-radius: 5px; margin-bottom: .35rem; }
+      .pcard.cur { border-color: #c9b14a; background: #161306; }
+      .pcard .who { font-weight: 600; }
+      .chip { display: inline-block; padding: 0 .35rem; border-radius: 3px; background: #16301a; margin: 0 .15rem; font-size: .72rem; }
+      #inspect { font-size: .76rem; color: #9fc69a; min-height: 1.2rem; }
+      pre { line-height: 1.15; margin: 0; }
+      #log { max-height: 32vh; overflow: auto; font-size: .72rem; color: #9fc69a; }
+      .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
+      #status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; min-height: 1.2rem; }
+    </style>
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-D_CQI6oq.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-D9AjxcP6.js">
+  </head>
+  <body>
+    <h1>Expedition: Verdant Prime</h1>
+    <div class="sub">serverless boardgame.io build — click to play, bots fill the empty seats · <a href="bgio.html" style="color:#7ad07a">bgio inspector ↗</a></div>
+    <div class="controls">
+      <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
+      <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
+      <button id="hint">Bot: suggest move</button>
+      <button id="reset">New match</button>
+    </div>
+    <div class="cols">
+      <div>
+        <canvas id="board"></canvas>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="side">
+        <div id="status"></div>
+        <div class="panel"><h2>Players</h2><div id="players"></div></div>
+        <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
+        <div class="panel"><h2>Inspect</h2><div id="inspect">hover a tile</div></div>
+        <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
+      </div>
+    </div>
+  </body>
+</html>
