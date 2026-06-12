@@ -93,14 +93,20 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   else if (!human.has(ctx.currentPlayer)) bar.innerHTML = '<span style="opacity:.6">waiting for bot…</span>';
   else {
     const tile = G.map[cur.pos];
-    for (const a of legal) {
-      const label = actionLabel(a, tile);
-      if (label === null) continue;   // move/drive are board clicks
+    // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
+    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile) })).filter((x): x is { a: Action; label: string } => x.label !== null);
+    const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6 };
+    const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
+    const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';
+    labeled.sort((p, q) => rank(p.a) - rank(q.a));
+    const right = document.createElement('span'); right.className = 'bar-right';
+    for (const x of labeled) {
       const btn = document.createElement('button');
-      btn.textContent = label;
-      btn.addEventListener('click', () => dispatch(a));
-      bar.appendChild(btn);
+      btn.textContent = x.label;
+      btn.addEventListener('click', () => dispatch(x.a));
+      (isRight(x.a) ? right : bar).appendChild(btn);
     }
+    if (right.childElementCount) bar.appendChild(right);
   }
 
   $('log').textContent = G.log.slice(-30).join('\n');
