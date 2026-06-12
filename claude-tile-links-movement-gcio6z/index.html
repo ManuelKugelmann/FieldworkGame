@@ -8,10 +8,11 @@
       :root { color-scheme: dark; }
       body {
         margin: 0; padding: 1.5rem;
-        background: #0b0f0a; color: #d6e4d0;
+        background: #0b0f0a; color: #d6e4d0; border-top: 3px solid #c9962f;   /* amber = lean canvas viewer */
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
       h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .25rem; }
+      .badge { font-size: .58rem; text-transform: uppercase; letter-spacing: .08em; padding: .12rem .4rem; border-radius: 3px; vertical-align: middle; margin-left: .5rem; background: #3a2f12; color: #e3b765; border: 1px solid #6b5320; }
       .sub { color: #6f8f70; font-size: .8rem; margin-bottom: 1rem; }
       .controls { margin-bottom: 1rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
       label.seat { font-size: .78rem; color: #9fc69a; display: inline-flex; gap: .3rem; align-items: center; }
@@ -48,12 +49,12 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-COVfd8Xc.js"></script>
-    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-BQPlI-2d.js">
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-CYAf90TE.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-C_j-rH1v.js">
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
-    <h1>Expedition: Verdant Prime</h1>
+    <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span></h1>
     <div class="sub">serverless boardgame.io build — click to play, bots fill the empty seats · <a href="bgio.html" style="color:#7ad07a">bgio player frontend + Debug Inspector ↗</a></div>
     <div class="controls">
       <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
