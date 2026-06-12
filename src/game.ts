@@ -1,7 +1,7 @@
 import type { Game, Move } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
 
-export type Terrain = 'road' | 'wild' | 'forest' | 'rocky' | 'water';
+export type Terrain = 'road' | 'grassland' | 'wild' | 'forest' | 'rocky' | 'water' | 'void';  // void = off-board (irregular edges)
 export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
@@ -19,39 +19,43 @@ export interface GState {
   events: string[]; monsoon: number; epilogue: boolean; labLeft: number; log: string[];   // epilogue = indoor lab season
 }
 
-const N = 10, START_AP = 4,  // 4 AP/round
+let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
+const DIM_MIN = 10, DIM_MAX = 15, START_AP = 4,  // 4 AP/round
   COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, HELILIFT_COST = 12;  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
-const RICH: Record<Terrain, number> = { road: 1, wild: 3, forest: 2, rocky: 3, water: 0 };  // rocky = geology-rich outcrops
+const RICH: Record<Terrain, number> = { road: 1, grassland: 1, wild: 3, forest: 2, rocky: 3, water: 0, void: 0 };  // rocky = geology-rich; grassland = sparse
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
+const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
+const grass = (map: Tile[], a: number, b: number) => map[a].terrain === 'grassland' || map[b].terrain === 'grassland';  // grassland = fast going (path-like)
 const dirBit = (a: number, b: number) => b === a - N ? 1 : b === a + N ? 4 : b === a + 1 ? 2 : 8;  // N1 E2 S4 W8
 const onPath = (map: Tile[], a: number, b: number) => ((map[a].roads | map[a].paths) & dirBit(a, b)) !== 0;  // road OR foot edge
 const onBlocked = (map: Tile[], a: number, b: number) => (map[a].blocked & dirBit(a, b)) !== 0;  // cliff edge: uncrossable by anyone (foot/car/boat)
-// board/leave a bridge only via an edge; land↔land always allowed; cliffs hard-block everyone
-const canMoveDry = (map: Tile[], a: number, b: number) => onBlocked(map, a, b) || plainRiver(map[a]) || plainRiver(map[b]) ? false : (map[a].bridge || map[b].bridge) ? onPath(map, a, b) : true;  // river = hard barrier (map validation)
-const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph: bridges via edge; open water needs a boat; cliffs block all
-  if (onBlocked(map, a, b)) return false;                          // cliff = hard barrier for everyone
+// board/leave a bridge only via an edge; land↔land always allowed; cliffs + void hard-block everyone
+const canMoveDry = (map: Tile[], a: number, b: number) => onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b]) || plainRiver(map[a]) || plainRiver(map[b]) ? false : (map[a].bridge || map[b].bridge) ? onPath(map, a, b) : true;  // river = hard barrier (map validation)
+const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph: bridges via edge; open water needs a boat; cliffs/void block all
+  if (onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b])) return false;   // cliff / off-board = hard barrier
   if (map[a].bridge || map[b].bridge) return onPath(map, a, b);    // bridge: board/leave via an edge
   if (plainRiver(map[a]) || plainRiver(map[b])) return false;      // open water — boat only (no foot-ford)
   return true;                                                     // land↔land / land↔brook (no rocky exit constraint)
 };
-const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 1 : 2;  // road/foot edge = 1 AP; bushwhack/ford = 2 (brook discount is boat-only)
+const cost = (map: Tile[], a: number, b: number) => (onPath(map, a, b) || grass(map, a, b)) ? 1 : 2;  // road/foot edge OR grassland = 1 AP; bushwhack/ford = 2 (brook discount is boat-only)
 const canBoat = (map: Tile[], a: number, b: number) => {           // BOAT graph (player carrying the boat): water + brooks, and still walks dry land
-  if (onBlocked(map, a, b)) return false;
+  if (onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b])) return false;
   if (map[a].bridge || map[b].bridge) return onPath(map, a, b);
   return true;                                                     // land↔land, land↔water, water↔water
 };
-const boatCost = (map: Tile[], a: number, b: number) =>             // water / brook / path step = 1 AP; portaging the boat over dry land = 2
-  (plainRiver(map[a]) || plainRiver(map[b]) || onPath(map, a, b) || (map[a].smallRivers & dirBit(a, b))) ? 1 : 2;
+const boatCost = (map: Tile[], a: number, b: number) =>             // water / brook / path / grassland step = 1 AP; portaging the boat over rough dry land = 2
+  (plainRiver(map[a]) || plainRiver(map[b]) || onPath(map, a, b) || grass(map, a, b) || (map[a].smallRivers & dirBit(a, b))) ? 1 : 2;
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
 const isHub = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // research+publish hubs (road base ≡ remote base)
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  // buy gear here (road-network services)
 
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
-  road:   { geo: 5, arch: 2, zoo: 1, bot: 1 },
-  forest: { bot: 4, zoo: 3, arch: 2, geo: 1 },
-  wild:   { bot: 5, zoo: 4, arch: 2, geo: 1 },
-  rocky:  { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
+  road:      { geo: 5, arch: 2, zoo: 1, bot: 1 },
+  grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
+  forest:    { bot: 4, zoo: 3, arch: 2, geo: 1 },
+  wild:      { bot: 5, zoo: 4, arch: 1, geo: 1 },   // high botany + zoology; few (valuable) geo + archaeology
+  rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
 };
 function buildPool(t: Terrain): Discovery[] {
   const out: Discovery[] = [], w = WEIGHTS[t]!;
@@ -129,16 +133,27 @@ function genOnce(seed: number) {
   // flood wild, carve forest + rocky (both passable; rocky only gates river exit, so no connectivity guard needed)
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'wild');
   const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'wild') set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'wild'); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };
-  carve('forest', 5, 5); carve('rocky', 6, 4);
+  const scale = (N * N) / 100;   // patch counts scale with board area (10×10 … 15×15)
+  carve('forest', Math.round(5 * scale), 5); carve('rocky', Math.round(6 * scale), 4); carve('grassland', Math.round(6 * scale), 5);
   // CLIFFS: 1–2 uncrossable edges on some land tiles (plain land↔land only — never roads/water/bridges, so the laid networks stay intact)
-  const isLand = (i: number) => g[i].terrain === 'wild' || g[i].terrain === 'forest' || g[i].terrain === 'rocky';
+  const isLand = (i: number) => { const t = g[i].terrain; return t === 'wild' || t === 'forest' || t === 'rocky' || t === 'grassland'; };
   for (let i = 0; i < N * N; i++) {
     if (!isLand(i) || rand() >= 0.14) continue;                    // only some land tiles get cliffs
     const cand = nbrs(i).filter(j => isLand(j) && !(g[i].roads & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
     const k = 1 + (rand() < 0.5 ? 0 : 1);
     for (let n2 = 0; n2 < k && cand.length; n2++) block(i, cand.splice(Math.floor(rand() * cand.length), 1)[0]);
   }
-  placeHotspots(g, base);   // after cliffs so the base-reachable forage guard accounts for them; before footpaths so the remote base seeds trails
+  // IRREGULAR EDGES: nibble void bays into the outer ring (plain land only; validation guards connectivity, reseeding if a bite isolates play)
+  const voidable = (i: number) => isLand(i) && !g[i].hotspot && g[i].roads === 0 && g[i].paths === 0 && g[i].smallRivers === 0;
+  const onBorder = (i: number) => { const r = (i / N) | 0, c = i % N; return r === 0 || c === 0 || r === N - 1 || c === N - 1; };
+  const bites = Math.round((3 + Math.floor(rand() * 5)) * scale);
+  for (let b = 0; b < bites; b++) {
+    const starts: number[] = []; for (let i = 0; i < N * N; i++) if (onBorder(i) && voidable(i)) starts.push(i);
+    if (!starts.length) break;
+    let i = starts[Math.floor(rand() * starts.length)]; const blob = 1 + Math.floor(rand() * 3);
+    for (let s = 0; s < blob && voidable(i); s++) { set(i, 'void'); const o = nbrs(i).filter(j => voidable(j)); if (!o.length) break; i = o[Math.floor(rand() * o.length)]; }
+  }
+  placeHotspots(g, base);   // after cliffs + void so the base-reachable forage guard accounts for them; before footpaths so the remote base seeds trails
 
   // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + some road trailheads; trails fizzle out anywhere
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
@@ -197,9 +212,10 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   g[allLand.slice().sort((a, b) => dist(b, base) - dist(a, base))[0]].hotspot = 'remote';   // farthest frontier — may be isolated (reach by boat or skip)
   return true;
 }
-function generateMap(seed: number): { map: Tile[]; start: number } {
-  for (let a = 0; a < 96; a++) { const { g, bridges, base } = genOnce(seed + a * 7919); if (!validate(g, bridges)) return { map: g, start: base }; }
-  throw new Error('map generation failed validation after 25 tries');   // fail-early
+function generateMap(seed: number, dim: number): { map: Tile[]; start: number } {
+  N = dim;   // set the grid dimension for this match (all helpers read the module-level N)
+  for (let a = 0; a < 160; a++) { const { g, bridges, base } = genOnce(seed + a * 7919); if (!validate(g, bridges)) return { map: g, start: base }; }
+  throw new Error('map generation failed validation');   // fail-early
 }
 
 function reveal(G: GState, t: number, random: any) {
@@ -447,7 +463,8 @@ export const Expedition: Game<GState> = {
   minPlayers: 2, maxPlayers: 4,
   setup: ({ ctx, random }: any) => {
     const seed = random ? (Math.floor(random.Number() * 1e9) || MAP_SEED) : MAP_SEED;   // per-match map+deck variety
-    const { map, start } = generateMap(seed);
+    const dim = DIM_MIN + (random ? Math.floor(random.Number() * (DIM_MAX - DIM_MIN + 1)) : 0);   // 10..15 square
+    const { map, start } = generateMap(seed, dim);
     map[start].revealed = true;
     map[start].equipment.push({ kind: 'boat' });   // one shared boat, cached at base (pick it up to cross water)
     return {
@@ -455,7 +472,7 @@ export const Expedition: Game<GState> = {
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0, boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
-      pools: { road: buildPool('road'), wild: buildPool('wild'), forest: buildPool('forest'), rocky: buildPool('rocky') },
+      pools: { road: buildPool('road'), grassland: buildPool('grassland'), wild: buildPool('wild'), forest: buildPool('forest'), rocky: buildPool('rocky') },
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },

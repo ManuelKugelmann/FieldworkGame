@@ -38,7 +38,7 @@ export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#d8b15a', zoo: '#e07a6a', bot: '#7ad07a', arch: '#9a8ad0' };
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
-  road: '#5b5340', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79',
+  road: '#5b5340', grassland: '#5d6e3a', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
 };
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const CLIFF_LINE = '#e2553a';      // impassable cliff edge
@@ -153,6 +153,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   // 1) tiles + fog
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
+    if (t.terrain === 'void') continue;   // off-board cell → leave as background for a ragged edge
     cctx.fillStyle = t.bridge ? BRIDGE_FILL : TERRAIN_FILL[t.terrain];
     cctx.fillRect(x, y, CELL, CELL);
     if (!t.revealed) { cctx.fillStyle = 'rgba(5,8,5,0.55)'; cctx.fillRect(x, y, CELL, CELL); }
