@@ -25,6 +25,7 @@
       .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
       @media (min-width: 760px) { .cols { flex-wrap: nowrap; } }   /* keep the stats beside the field, never wrapped below it */
       .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+      .inspectwrap { width: 100%; max-width: 30rem; margin-top: .45rem; }
       #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
       .side { flex: 0 1 22rem; min-width: 16rem; max-width: 22rem; }
       .panel { margin-bottom: 1rem; }
@@ -49,8 +50,8 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-DtuMAByv.js"></script>
-    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-Djw7FKZ-.js">
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-CN1mcSFY.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-DCAmQWuJ.js">
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
@@ -65,13 +66,13 @@
     <div class="cols">
       <div class="boardwrap">
         <canvas id="board"></canvas>
+        <div class="panel inspectwrap"><h2>Inspect</h2><div id="inspect">hover a tile</div></div>
       </div>
       <div class="side">
         <div id="status"></div>
         <div class="panel"><h2>Players</h2><div id="players"></div></div>
         <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
-        <div class="panel"><h2>Inspect</h2><div id="inspect">hover a tile</div></div>
       </div>
     </div>
   </body>
