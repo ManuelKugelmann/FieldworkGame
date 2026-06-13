@@ -115,13 +115,13 @@ function genOnce(seed: number) {
   // river: 4-connected vertical path; trunk kept in the central column band so the road bridge lands in the centre quadrant
   const wlo = Math.max(1, Math.ceil(N / 3)), whi = Math.min(N - 2, Math.floor(2 * N / 3));
   let col = Math.max(wlo, Math.min(whi, Math.floor(N / 2) - 1 + Math.floor(rand() * 3))); const river: number[] = [];
-  for (let r = 0; r < N; r++) { set(ix(r, col), 'water'); river.push(ix(r, col)); if (r < N - 1) { let nc = col + (rand() < 0.5 ? 0 : (rand() < 0.5 ? -1 : 1)); nc = Math.max(wlo, Math.min(whi, nc)); if (nc !== col) { set(ix(r, nc), 'water'); river.push(ix(r, nc)); } col = nc; } }
+  for (let r = 0; r < N; r++) { set(ix(r, col), 'water'); river.push(ix(r, col)); if (r < N - 1) { let nc = col + (rand() < 0.62 ? 0 : (rand() < 0.5 ? -1 : 1)); nc = Math.max(wlo, Math.min(whi, nc)); if (nc !== col) { set(ix(r, nc), 'water'); river.push(ix(r, nc)); } col = nc; } }
 
   // BIG BRANCH: a major fork off the trunk to an edge — full barrier (own crossing) → carves a 3rd section
   const branch: number[] = [];
   for (let att = 0; att < 14 && !branch.length; att++) {
     const bp = river[3 + Math.floor(rand() * Math.max(1, river.length - 6))];
-    const dir = (bp % N) < N / 2 ? 1 : -1; let pr = bp; const blen = 4 + Math.floor(rand() * 3); const cells: number[] = [];
+    const dir = (bp % N) < N / 2 ? 1 : -1; let pr = bp; const blen = 3 + Math.floor(rand() * 2); const cells: number[] = [];
     for (let s = 0; s < blen; s++) {
       const prow = (pr / N) | 0, pc = pr % N; let nr = prow, ncl = pc + dir;
       if (s > 0 && rand() < 0.35) { ncl = pc; nr = prow + (rand() < 0.5 ? -1 : 1); }   // 4-connected bend
