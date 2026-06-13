@@ -1,5 +1,5 @@
 import { Client } from 'boardgame.io/client';
-import { Expedition, botAction, enumerate } from './game';
+import { Expedition, botAction, enumerate, publishCost } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
@@ -95,7 +95,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   const seat = human.has(ctx.currentPlayer) ? 'you' : 'bot…';
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
-    : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap}AP · 🌧${G.monsoon}/4`;
+    : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap}AP · pub ${publishCost(cur.prestige)}AP · 🌧${G.monsoon}/4`;
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
     const cells = pat.cells.map(c => {
@@ -125,7 +125,9 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   else {
     const tile = G.map[cur.pos];
     // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
-    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile, G.goals) })).filter((x): x is { a: Action; label: string } => x.label !== null);
+    const pubAP = publishCost(cur.prestige);   // publish AP cost rises with prestige
+    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile, G.goals) })).filter((x): x is { a: Action; label: string } => x.label !== null)
+      .map(x => x.a.move === 'publish' ? { ...x, label: `${x.label} · ${pubAP}AP` } : x);
     const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6 };
     const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
     const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';

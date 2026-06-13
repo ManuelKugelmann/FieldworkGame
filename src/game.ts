@@ -23,7 +23,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 5, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 3, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12;  // CARRY_SLOTS 5 = a full house / flush fits  // FIND_CHANCE: each potential slot (gray dot) yields a discovery on reveal, else empty  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
+  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 5, MONSOON_END = 4, MAX_CITE = 0, GEAR_MAX = 3, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PRESTIGE_STEP = 6;  // MAX_CITE 0 = no citation (hands fully owned)  // PRESTIGE_STEP: publish AP cost = 1 + floor(prestige/STEP) — rising costs more effort (rubber-band catch-up)  // CARRY_SLOTS 5 = a full house / flush fits  // FIND_CHANCE: each potential slot yields a discovery on reveal  // CAR_STEPS / BOAT_STEPS tiles per AP  // gear: +1 catalogue roll/level
 
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
@@ -439,6 +439,7 @@ const COL_NAME = ['red', 'green', 'gold', 'violet'];   // the 4 colours (match D
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
 const POOL_SIZE = 8;   // open research questions on the board at once
+export const publishCost = (prestige: number) => 1 + Math.floor(Math.max(0, prestige) / PRESTIGE_STEP);   // rising prestige → each publish takes more AP (catch-up handicap)
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
 export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
@@ -467,13 +468,13 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   const next = (t: DType) => DTYPES[(DTYPES.indexOf(t) + 1) % 4];
   const deck: Pattern[] = [
     // attainable 3-card / 4-card bread-and-butter (the bulk of the pool)
-    ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 5, 1)),
-    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 5, 1)),
-    ...DTYPES.map(t => mk(`${t} + ${next(t)} two pair`, [{ count: 2, type: t }, { count: 2, type: next(t) }], 5, 2)),
+    ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 6, 2)),
+    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 6, 2)),
+    ...DTYPES.map(t => mk(`${t} + ${next(t)} two pair`, [{ count: 2, type: t }, { count: 2, type: next(t) }], 6, 2)),
     // premium 5-card / both-axes (rarer, high value)
-    ...DTYPES.map(t => mk(`${t} full house`, [{ count: 3, type: t }, { count: 2, type: next(t) }], 9, 3)),
+    ...DTYPES.map(t => mk(`${t} full house`, [{ count: 3, type: t }, { count: 2, type: next(t) }], 8, 3)),
     ...colors.map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], 8, 3)),
-    ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 9, 3)),
+    ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 8, 3)),
     ...colors.map(c => mk(`${COL_NAME[c]} ${DTYPES[c % 4]} triple`, [{ count: 3, type: DTYPES[c % 4], color: c }], 7, 2)),   // both-axes
     mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t })), 5, 2),
     mk('colour straight', colors.map(c => ({ count: 1, color: c })), 5, 2),
@@ -493,14 +494,14 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
 };
 
-const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research+publish; may cite others' published discoveries
-  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
-  if (p.ap < 1 || (!G.epilogue && !isHub(tile))) return INVALID_MOVE;   // lab season = publish anywhere
+const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research+publish (hands fully owned; no citation)
+  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], apCost = publishCost(p.prestige);
+  if (p.ap < apCost || (!G.epilogue && !isHub(tile))) return INVALID_MOVE;   // lab season = publish anywhere; cost rises with prestige
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
   const atBase = p.pos === G.base, sLen = p.samples.length;            // at base the banked stash is in reach of the lab too
   const owned = atBase ? [...p.samples, ...p.stash] : p.samples;
   const res = assemble(G, pat.id, owned, citablePool(G, ctx.currentPlayer)); if (!res) return INVALID_MOVE;
-  p.ap -= 1;
+  p.ap -= apCost;
   const used = res.ownedIdx.map(i => owned[i]);
   const sIdx = res.ownedIdx.filter(i => i < sLen).sort((a, b) => b - a);          // remove the used cards from carry…
   const tIdx = res.ownedIdx.filter(i => i >= sLen).map(i => i - sLen).sort((a, b) => b - a);   // …and the stash
@@ -558,7 +559,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
   const atBase = p.pos === G.base, ownedPub = atBase ? [...p.samples, ...p.stash] : p.samples;
   // publish at a hub — claim the most valuable open question you can complete (projects are scarce/contested, so grab them)
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, ownedPub, cit)) return { move: 'publish', args: [pat.id] };
+  if (p.ap >= publishCost(p.prestige) && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, ownedPub, cit)) return { move: 'publish', args: [pat.id] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (atBase && p.samples.length > 0 && (p.samples.length >= CARRY_SLOTS || tile.finds.length === 0)) return { move: 'stash', args: [] };   // bank carried specimens at base to keep collecting toward a project
   if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money (free action)
@@ -624,7 +625,7 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.pos === G.base && p.samples.length > 0) out.push({ move: 'stash', args: [] });   // bank specimens at the base lab
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) {   // publish: at base the banked stash is in reach too
+  if (p.ap >= publishCost(p.prestige) && (G.epilogue || isHub(tile))) {   // publish: at base the banked stash is in reach too
     const cit = citablePool(G, ctx.currentPlayer), owned = p.pos === G.base ? [...p.samples, ...p.stash] : p.samples;
     G.goals.forEach(pat => { if (assemble(G, pat.id, owned, cit)) out.push({ move: 'publish', args: [pat.id] }); });
   }
