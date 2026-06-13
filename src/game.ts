@@ -140,22 +140,19 @@ function genOnce(seed: number) {
   }
   // place all 3 launch cells FIRST (the junction is the only 3-way tile), then grow the arms in ALTERNATION (round-robin), each meandering 50:50 straight / 90° turn
   const arms = armDirs.map(dir0 => { const fr = jr + dir0[0], fc = jc + dir0[1]; addW(ix(fr, fc)); return { r: fr, c: fc, prev: ix(fr, fc), dir: dir0, active: true }; });
-  for (let round = 0; round < N * 4; round++) {
-    let any = false;
-    for (const arm of arms) {
-      if (!arm.active) continue;
-      if (arm.r === 0 || arm.r === N - 1 || arm.c === 0 || arm.c === N - 1) { arm.active = false; continue; }   // reached the boundary
-      let chosen = arm.dir;
-      if (rand() < 0.5) { const ps = perp(arm.dir); chosen = ps[Math.floor(rand() * 2)]; }
-      let moved = false;
-      for (const d of [chosen, arm.dir, ...perp(arm.dir)]) {
-        const nr = arm.r + d[0], nc = arm.c + d[1]; if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
-        const cand = ix(nr, nc); if (water.has(cand) || riverNbrs(cand, arm.prev) > 0) continue;
-        addW(cand); arm.prev = cand; arm.r = nr; arm.c = nc; arm.dir = d; moved = true; any = true; break;
-      }
-      if (!moved) arm.active = false;
+  for (let step = 0; step < N * N; step++) {
+    const live = arms.filter(a => a.active); if (!live.length) break;
+    const arm = live[Math.floor(rand() * live.length)];          // extend a RANDOMLY chosen arm each step
+    if (arm.r === 0 || arm.r === N - 1 || arm.c === 0 || arm.c === N - 1) { arm.active = false; continue; }   // reached the boundary
+    let chosen = arm.dir;
+    if (rand() < 0.5) { const ps = perp(arm.dir); chosen = ps[Math.floor(rand() * 2)]; }
+    let moved = false;
+    for (const d of [chosen, arm.dir, ...perp(arm.dir)]) {
+      const nr = arm.r + d[0], nc = arm.c + d[1]; if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
+      const cand = ix(nr, nc); if (water.has(cand) || riverNbrs(cand, arm.prev) > 0) continue;
+      addW(cand); arm.prev = cand; arm.r = nr; arm.c = nc; arm.dir = d; moved = true; break;
     }
-    if (!any) break;
+    if (!moved) arm.active = false;
   }
 
   // (brooks are land-cell edge overlays now — laid after the land flood, near the footpaths)
