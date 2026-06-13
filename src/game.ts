@@ -21,7 +21,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12;  // FIND_CHANCE: each potential slot (gray dot) yields a discovery on reveal, else empty  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
+  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 3, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12;  // FIND_CHANCE: each potential slot (gray dot) yields a discovery on reveal, else empty  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
@@ -458,7 +458,7 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   const roll = random.D6() + random.D6() + p.gear;   // gear steadies the dice
   const d = tile.finds[find], tag = `${d.type}${d.color}`;
   if (roll >= CATALOGUE_DC) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll} ✓ collected`); }
-  else if (roll === CATALOGUE_DC - 1) G.log.push(`catalogue ${tag} ${roll} ◦ stayed`);   // just missed — the find stays for another attempt
+  else if (roll >= CATALOGUE_DC - 2) G.log.push(`catalogue ${tag} ${roll} ◦ stayed`);   // a near miss (within 2) leaves the find for another attempt — fewer rolls destroy it
   else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
 };
 

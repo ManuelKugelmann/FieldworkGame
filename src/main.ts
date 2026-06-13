@@ -74,7 +74,7 @@ function showToast(t: Toast) {
   el.className = `toast ${t.kind}`; el.textContent = t.text;
   toastBox.appendChild(el);
   while (toastBox.childElementCount > 5) toastBox.firstElementChild?.remove();
-  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 2200);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 4200);
 }
 
 function draw() {

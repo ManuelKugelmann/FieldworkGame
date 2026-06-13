@@ -56,7 +56,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
     if (!fresh.length) return;
     const items = fresh.map((t) => ({ id: nextId.current++, t }));
     setToasts((prev) => [...prev, ...items].slice(-5));
-    const timers = items.map((it) => window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== it.id)), 2400));
+    const timers = items.map((it) => window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== it.id)), 4200));
     return () => timers.forEach(clearTimeout);
   }, [G.log.length]);
 
