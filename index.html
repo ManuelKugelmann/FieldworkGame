@@ -15,6 +15,7 @@
       .badge { font-size: .56rem; text-transform: uppercase; letter-spacing: .08em; padding: .1rem .35rem; border-radius: 3px; vertical-align: middle; margin-left: .4rem; background: #3a2f12; color: #e3b765; border: 1px solid #6b5320; }
       .sub { color: #6f8f70; font-size: .72rem; margin: .15rem 0 .5rem; }
       .controls { margin-bottom: .35rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+      .foot { margin: 1rem 0 0; font-size: .72rem; }
       label.seat { font-size: .78rem; color: #9fc69a; display: inline-flex; gap: .3rem; align-items: center; }
       button {
         background: #16301a; color: #cfe9c8; border: 1px solid #2f5a34;
@@ -53,7 +54,7 @@
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
-    <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span> <a href="bgio.html" style="font-size:.62rem;font-weight:400;color:#7ad07a">bgio + Debug Inspector ↗</a></h1>
+    <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span></h1>
     <div class="controls">
       <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
       <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
@@ -72,6 +73,7 @@
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
       </div>
     </div>
+    <div class="foot"><a href="bgio.html" style="color:#7ad07a">bgio player frontend + Debug Inspector ↗</a></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

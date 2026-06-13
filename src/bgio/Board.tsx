@@ -84,7 +84,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
       <div className="toasts">
         {toasts.map(({ id, t }) => <div key={id} className={`toast ${t.kind}`}>{t.text}</div>)}
       </div>
-      <h1>Expedition: Verdant Prime <span className="badge">bgio · Debug Inspector →</span> <a href="index.html" style={{ fontSize: '.62rem', fontWeight: 400 }}>canvas ↗</a></h1>
+      <h1>Expedition: Verdant Prime <span className="badge">bgio · Debug Inspector →</span></h1>
       <div className="controls">
         <button onClick={() => reset()}>New match</button>
         <button
@@ -162,6 +162,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
           </div>
         </div>
       </div>
+      <div style={{ marginTop: '1rem', fontSize: '.72rem' }}><a href="index.html">lean canvas viewer ↗</a></div>
     </div>
   );
 }
