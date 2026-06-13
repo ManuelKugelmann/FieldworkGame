@@ -115,6 +115,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
       ` ${vp} pts · ${p.prestige} prestige · ${p.money}$ · gear ${p.gear}<br>` +
       `<span style="opacity:.7">carry:</span> ${sampleChips(p.samples)} ` +
+      `${p.stash.length ? `<span style="opacity:.7">stash:</span> ${sampleChips(p.stash)} ` : ''}` +
       `<span style="opacity:.7">pub:</span> ${p.published.length}</div>`;
   }).join('');
 

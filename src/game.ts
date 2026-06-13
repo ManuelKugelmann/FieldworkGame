@@ -10,7 +10,7 @@ export type EquipKind = 'gear' | 'boat';              // carryable items cached 
 export interface Equip { kind: EquipKind; }
 export interface Vehicle { pos: number; driver: string | null; }  // car: a positioned entity you board/leave; drive moves both
 export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; rivers: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; }  // roads/paths/smallRivers(brooks)/blocked(cliffs)/rivers(channel linkage) = edge bitmasks N1 E2 S4 W8
-export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; gear: number; boat: boolean; }  // gear = catalogue-roll bonus; boat = carrying the shared boat (enables water crossing)
+export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; stash: Discovery[]; published: Discovery[]; prestige: number; gear: number; boat: boolean; }  // samples = carried (capped); stash = banked at base (uncapped); gear = catalogue-roll bonus; boat = carrying the shared boat
 export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
@@ -424,6 +424,12 @@ const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // re
   eq.splice(idx, 1);
   G.log.push(`P${ctx.currentPlayer} pickup ${kind}@${p.pos}`);
 };
+const stashMove: Move<GState> = ({ G, ctx }) => {   // bank all carried specimens at the base lab (free) — collect toward a project across trips, beyond the carry cap
+  const p = G.players[ctx.currentPlayer];
+  if (G.epilogue || p.pos !== G.base || p.samples.length === 0) return INVALID_MOVE;
+  const n = p.samples.length; p.stash.push(...p.samples); p.samples.length = 0;
+  G.log.push(`P${ctx.currentPlayer} stash ${n} @base (banked ${p.stash.length})`);
+};
 
 // ---- research projects: a SHARED, CONSUMED pool of open questions (first to publish CLAIMS it; the pool refills from a per-match deck).
 // Poker grammar (discipline = rank, colour = suit) made CONCRETE: each project pins specific values, so two players can race the same question.
@@ -491,10 +497,14 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
   if (p.ap < 1 || (!G.epilogue && !isHub(tile))) return INVALID_MOVE;   // lab season = publish anywhere
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
-  const res = assemble(G, pat.id, p.samples, citablePool(G, ctx.currentPlayer)); if (!res) return INVALID_MOVE;
+  const atBase = p.pos === G.base, sLen = p.samples.length;            // at base the banked stash is in reach of the lab too
+  const owned = atBase ? [...p.samples, ...p.stash] : p.samples;
+  const res = assemble(G, pat.id, owned, citablePool(G, ctx.currentPlayer)); if (!res) return INVALID_MOVE;
   p.ap -= 1;
-  const used = res.ownedIdx.map(i => p.samples[i]);
-  res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => p.samples.splice(i, 1));
+  const used = res.ownedIdx.map(i => owned[i]);
+  const sIdx = res.ownedIdx.filter(i => i < sLen).sort((a, b) => b - a);          // remove the used cards from carry…
+  const tIdx = res.ownedIdx.filter(i => i >= sLen).map(i => i - sLen).sort((a, b) => b - a);   // …and the stash
+  sIdx.forEach(i => p.samples.splice(i, 1)); tIdx.forEach(i => p.stash.splice(i, 1));
   p.published.push(...used);                                          // owned discoveries → your published pool (citable by others)
   const prestige = pat.prestige, money = pat.money;                  // flat — cited (≤1) is a top-up, no bonus or penalty
   p.prestige += prestige; p.money += money;                          // research token → unified prestige accumulation
@@ -546,9 +556,11 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
 // heuristic policy: publish at a hub; grab the boat when it unlocks water-bound forage; drive roads + boat water toward the goal
 export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
+  const atBase = p.pos === G.base, ownedPub = atBase ? [...p.samples, ...p.stash] : p.samples;
   // publish at a hub — claim the most valuable open question you can complete (projects are scarce/contested, so grab them)
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, p.samples, cit)) return { move: 'publish', args: [pat.id] };
+  if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, ownedPub, cit)) return { move: 'publish', args: [pat.id] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
+  if (atBase && p.samples.length > 0 && (p.samples.length >= CARRY_SLOTS || tile.finds.length === 0)) return { move: 'stash', args: [] };   // bank carried specimens at base to keep collecting toward a project
   if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money (free action)
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
@@ -609,9 +621,13 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.boat) out.push({ move: 'drop', args: ['boat'] });
     if (tile.equipment.some(e => e.kind === 'gear') && p.gear < GEAR_MAX) out.push({ move: 'pickup', args: ['gear'] });
     if (tile.equipment.some(e => e.kind === 'boat') && !p.boat) out.push({ move: 'pickup', args: ['boat'] });
+    if (p.pos === G.base && p.samples.length > 0) out.push({ move: 'stash', args: [] });   // bank specimens at the base lab
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) { const cit = citablePool(G, ctx.currentPlayer); G.goals.forEach(pat => { if (assemble(G, pat.id, p.samples, cit)) out.push({ move: 'publish', args: [pat.id] }); }); }  // lab research = publish anywhere
+  if (p.ap >= 1 && (G.epilogue || isHub(tile))) {   // publish: at base the banked stash is in reach too
+    const cit = citablePool(G, ctx.currentPlayer), owned = p.pos === G.base ? [...p.samples, ...p.stash] : p.samples;
+    G.goals.forEach(pat => { if (assemble(G, pat.id, owned, cit)) out.push({ move: 'publish', args: [pat.id] }); });
+  }
   out.push({ event: 'endTurn' });
   return out;
 };
@@ -658,7 +674,7 @@ export const Expedition: Game<GState> = {
     map[start].equipment.push({ kind: 'boat' });   // one shared boat, cached at base (pick it up to cross water)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
-        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0, boat: false }])),
+        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], stash: [], published: [], prestige: 0, gear: 0, boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand) },
@@ -666,7 +682,7 @@ export const Expedition: Game<GState> = {
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
-  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup },
+  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, stash: stashMove },
   turn: {
     onBegin: ({ G, ctx, random }) => {
       if (!G.epilogue) {

@@ -128,6 +128,7 @@ export function actionLabel(a: Action, tile: Tile, goals?: Pattern[]): string | 
   if (a.move === 'drop') return a.args?.[0] === 'boat' ? 'Drop boat' : 'Drop gear';
   if (a.move === 'pickup') return a.args?.[0] === 'boat' ? 'Pick up boat' : 'Pick up gear';
   if (a.move === 'helilift') return 'Helilift → base (−12$)';
+  if (a.move === 'stash') return 'Stash at base';
   if (a.event === 'endTurn') return 'End turn';
   return null;
 }
@@ -160,7 +161,7 @@ export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; s
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; }
 
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
-  const owned = G.players[pid].samples;
+  const owned = [...G.players[pid].samples, ...G.players[pid].stash];   // carry + banked stash counts toward planning
   const citable: Discovery[] = [];
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 
