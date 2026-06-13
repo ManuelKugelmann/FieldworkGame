@@ -151,8 +151,8 @@ function genOnce(seed: number) {
     if (!g[i]) set(i, roadBase()); link(bridges[0], i);
   }
   const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].roads !== 0 && !g[i].bridge) a.push(i); return a; };
-  const branchN = 4 + Math.round((N - 10) / 2);   // road branches grown outward in all directions from the centre
-  for (let b = 0; b < branchN; b++) { const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)]; const len = 4 + Math.floor(rand() * 4); for (let s = 0; s < len; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, roadBase()); link(i, j); i = j; } }
+  const branchN = 3 + Math.round((N - 10) / 3);   // a few road branches grown outward from the centre
+  for (let b = 0; b < branchN; b++) { const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)]; const len = 3 + Math.floor(rand() * 3); for (let s = 0; s < len; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, roadBase()); link(i, j); i = j; } }
 
   // flood wild, carve forest + rocky + grassland (all passable land; rocky moves at 2 AP just like wild, bushwhack)
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'wild');
@@ -182,17 +182,19 @@ function genOnce(seed: number) {
     for (const v of nbrs(u)) if (!bseen.has(v) && passable(u, v)) { bseen.add(v); bq.push(v); }
   }
   for (let i = 0; i < N * N; i++) if (isLand(i) && g[i].roads === 0 && !keepLand.has(i)) set(i, 'void');   // never void a road cell
-  // the BASE hub sits on the most central land road cell (the road is grown from the bridge, so this is right by the centre)
-  let base = bridges[0], bd = Infinity;
-  for (let i = 0; i < N * N; i++) if (g[i].roads !== 0 && !g[i].bridge) { const d = dc(i); if (d < bd) { bd = d; base = i; } }
+  // the BASE hub sits a few road-tiles out from the bridge (road-distance ≈ 3), not right beside it
+  const bdist = new Map<number, number>([[bridges[0], 0]]); const bq2 = [bridges[0]];
+  while (bq2.length) { const u = bq2.shift()!; const d = bdist.get(u)!; for (const v of nbrs(u)) if (!bdist.has(v) && (g[u].roads & dirBit(u, v))) { bdist.set(v, d + 1); bq2.push(v); } }
+  let base = bridges[0], bestS = Infinity;
+  for (const [i, d] of bdist) if (g[i].roads !== 0 && !g[i].bridge) { const s = Math.abs(d - 3); if (s < bestS) { bestS = s; base = i; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
   // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + some road trailheads; trails fizzle out anywhere
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
   for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water' && g[j].terrain !== 'void' && !(g[fb].blocked & dirBit(fb, j))) linkP(fb, j);
   const roadAll: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].roads !== 0) roadAll.push(i);
-  const seeds = [...footBr]; for (let k = 0; k < 2 && roadAll.length; k++) seeds.push(roadAll[Math.floor(rand() * roadAll.length)]);
-  const remote = g.findIndex(t => t && t.hotspot === 'remote'); if (remote >= 0) seeds.push(remote);
+  const seeds = [...footBr]; for (let k = 0; k < 4 && roadAll.length; k++) seeds.push(roadAll[Math.floor(rand() * roadAll.length)]);   // more road trailheads
+  for (const hs of ['base', 'village', 'remote'] as const) { const i = g.findIndex(t => t && t.hotspot === hs); if (i >= 0) seeds.push(i); }   // trails also leave the base, market & remote
   for (const sd of seeds) {
     const o0 = nbrs(sd).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
     let i = o0[Math.floor(rand() * o0.length)]; linkP(sd, i);
