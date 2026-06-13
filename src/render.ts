@@ -44,6 +44,14 @@ export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#d8b15a', 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#5d6e3a', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
 };
+// grayish biome tint for the potential-discovery dots (the token pool is biome-specific, so the dots hint at the biome)
+function grayishBiome(hex: string): string {
+  const n = parseInt(hex.slice(1), 16), mix = (c: number) => Math.round(c * 0.42 + 168 * 0.58);
+  return `rgb(${mix((n >> 16) & 255)},${mix((n >> 8) & 255)},${mix(n & 255)})`;
+}
+const GRAY_BIOME = Object.fromEntries(
+  (Object.keys(TERRAIN_FILL) as Tile['terrain'][]).map(t => [t, grayishBiome(TERRAIN_FILL[t])]),
+) as Record<Tile['terrain'], string>;
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
@@ -205,7 +213,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     if (t.terrain !== 'void') {   // discovery slots: explored = coloured finds; unexplored = gray potential dots (richness)
       const n = t.revealed ? t.finds.length : t.richness;
       for (let k = 0; k < n; k++) {
-        cctx.fillStyle = t.revealed ? DTYPE_COLOR[t.finds[k].type] : 'rgba(206,210,205,0.5)';
+        cctx.fillStyle = t.revealed ? DTYPE_COLOR[t.finds[k].type] : GRAY_BIOME[t.terrain];
         cctx.beginPath(); cctx.arc(x + 7 + k * 8, y + CELL - 7, 3, 0, 7); cctx.fill();
       }
     }
