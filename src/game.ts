@@ -424,55 +424,50 @@ const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // re
   G.log.push(`P${ctx.currentPlayer} pickup ${kind}@${p.pos}`);
 };
 
-// ---- research goals. A goal is a multiset of PARTS; each part needs `count` discoveries pinned by discipline and/or colour.
-// Owned samples fill parts first; up to MAX_CITE shortfalls may cite another player's published pool. Goals are REUSABLE (not consumed).
+// ---- research goals: a fixed, ALWAYS-AVAILABLE poker payout table over the two-axis "deck".
+// Mapping: discipline = RANK (of-a-kind / full house / straight), colour = SUIT (flush). Higher poker hand → more prestige.
+// A goal is `counts` groups on one axis (each group = a distinct value with that many cards). Owned cards fill first; ≤MAX_CITE shortfall cites others' published. Discoveries used are CONSUMED into the publisher's pool.
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
 const COL_NAME = ['red', 'green', 'gold', 'violet'];   // the 4 colours (match DCOLOR in render)
-export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
-export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
-const GOALS_PER_MATCH = 8;
-// hand-tuned, difficulty-derived rewards [prestige, money]
-const RW = { triple: [3, 1], bothTriple: [5, 2], double: [5, 2], fullHouse: [7, 3], flush: [6, 3], rainbow: [4, 2] } as const;
-
-function buildGoalSet(rand: () => number): Pattern[] {   // draw a varied, reusable set of GOALS_PER_MATCH goals for this match
-  const colors = Array.from({ length: COLORS }, (_, i) => i);
-  const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  let n = 0; const mk = (label: string, parts: GoalPart[], rw: readonly [number, number]): Pattern => ({ id: `g${n++}`, label, parts, prestige: rw[0], money: rw[1] });
-  // build each category, then round-robin across (shuffled) categories so the 8 face-up goals stay varied
-  const singleTriples = shuf([
-    ...DTYPES.map(t => mk(`${t} triple`, [{ count: 3, type: t }], RW.triple)),
-    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], RW.triple)),
-  ]);
-  const bothTriples = shuf(DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} triple`, [{ count: 3, type: t, color: c }], RW.bothTriple))));
-  const doubles = shuf(DTYPES.flatMap(t1 => colors.map(c1 => {        // two distinct (disc,colour) pairs
-    const t2 = DTYPES[(DTYPES.indexOf(t1) + 1) % 4], c2 = (c1 + 1) % COLORS;
-    return mk(`${COL_NAME[c1]} ${t1} + ${COL_NAME[c2]} ${t2} double`, [{ count: 2, type: t1, color: c1 }, { count: 2, type: t2, color: c2 }], RW.double);
-  })));
-  const fullHouses = shuf(DTYPES.map(t => mk(`${t} full house`, [{ count: 3, type: t }, { count: 2, type: DTYPES[(DTYPES.indexOf(t) + 1) % 4] }], RW.fullHouse)));
-  const flushes = shuf(colors.map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], RW.flush)));
-  const rainbows = shuf([
-    mk('discipline rainbow', DTYPES.map(t => ({ count: 1, type: t })), RW.rainbow),
-    mk('colour rainbow', colors.map(c => ({ count: 1, color: c })), RW.rainbow),
-  ]);
-  const cats = shuf([singleTriples, bothTriples, doubles, fullHouses, flushes, rainbows]);
-  const out: Pattern[] = [];
-  for (let i = 0; out.length < GOALS_PER_MATCH && cats.some(c => c.length); i++) { const c = cats[i % cats.length]; if (c.length) out.push(c.shift()!); }
-  return out;
-}
-// resolve a goal: assign distinct owned discoveries to each part; any shortfall (≤MAX_CITE total) cites others' published
-function assembleGoal(parts: GoalPart[], owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
-  const used = new Set<number>(), ownedIdx: number[] = []; let cited = 0;
-  for (const part of parts) {
-    const match = (d: Discovery) => (part.type === undefined || d.type === part.type) && (part.color === undefined || d.color === part.color);
-    let got = 0;
-    for (let i = 0; i < owned.length && got < part.count; i++) if (!used.has(i) && match(owned[i])) { used.add(i); ownedIdx.push(i); got++; }
-    const short = part.count - got;
-    if (short > 0) { if (citable.filter(match).length < short) return null; cited += short; }   // cover from citable pool
+export interface Pattern { id: string; label: string; axis: 'type' | 'color'; counts: number[]; prestige: number; money: number; }
+const axisGet = (a: 'type' | 'color'): ((d: Discovery) => DType | number) => a === 'type' ? d => d.type : d => d.color;
+const axisVals = (a: 'type' | 'color'): (DType | number)[] => a === 'type' ? DTYPES : Array.from({ length: COLORS }, (_, i) => i);
+// the hands, weakest → strongest (prestige by poker rank). Singles aren't a hand (min = pair).
+const HANDS: Pattern[] = [
+  { id: 'pair',      label: 'pair',            axis: 'type',  counts: [2],          prestige: 1, money: 0 },   // 2 of one discipline
+  { id: 'twoPair',   label: 'two pair',        axis: 'type',  counts: [2, 2],       prestige: 2, money: 0 },   // 2 + 2 disciplines
+  { id: 'trips',     label: 'three of a kind', axis: 'type',  counts: [3],          prestige: 2, money: 1 },   // 3 of one discipline
+  { id: 'straight',  label: 'straight',        axis: 'type',  counts: [1, 1, 1, 1], prestige: 3, money: 1 },   // one of each discipline (the run)
+  { id: 'flush',     label: 'flush',           axis: 'color', counts: [5],          prestige: 3, money: 1 },   // 5 of one colour (suit)
+  { id: 'fullHouse', label: 'full house',      axis: 'type',  counts: [3, 2],       prestige: 4, money: 2 },   // 3 + 2 disciplines
+  { id: 'quads',     label: 'four of a kind',  axis: 'type',  counts: [4],          prestige: 5, money: 2 },   // 4 of one discipline
+];
+const PUBLISH_MIN = 4;   // the bot won't burn AP on hands below this prestige unless forced (carry full / lab season)
+export interface GoalSlot { value: DType | number; state: 'have' | 'cite' | 'need'; }
+// greedily fit a hand: assign each group (largest first) a distinct value with the most owned cards, citing ≤MAX_CITE shortfall
+export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
+  const get = axisGet(pat.axis), vals = axisVals(pat.axis);
+  const ownByVal = new Map<DType | number, number[]>(), citByVal = new Map<DType | number, number>();
+  for (const v of vals) { ownByVal.set(v, []); citByVal.set(v, citable.filter(d => get(d) === v).length); }
+  owned.forEach((d, i) => { const v = get(d); if (ownByVal.has(v)) ownByVal.get(v)!.push(i); });
+  const valOrder = [...vals].sort((a, b) => ownByVal.get(b)!.length - ownByVal.get(a)!.length);
+  const groups = pat.counts.map((c, gi) => ({ c, gi })).sort((a, b) => b.c - a.c);
+  const usedVal = new Set<DType | number>(); const ownedIdx: number[] = []; const slots: GoalSlot[] = []; let cited = 0, ok = true;
+  for (const g of groups) {
+    const v = valOrder.find(x => !usedVal.has(x))!; usedVal.add(v);
+    const idxs = ownByVal.get(v)!, have = Math.min(g.c, idxs.length); ownedIdx.push(...idxs.slice(0, have));
+    let cit = citByVal.get(v)!;
+    for (let k = 0; k < g.c; k++) {
+      if (k < have) slots.push({ value: v, state: 'have' });
+      else if (cited < MAX_CITE && cit > 0) { slots.push({ value: v, state: 'cite' }); cited++; cit--; }
+      else { slots.push({ value: v, state: 'need' }); ok = false; }
+    }
   }
-  return cited <= MAX_CITE ? { ownedIdx, cited } : null;
+  return { ok, cited, ownedIdx, slots };
 }
 function assemble(G: GState, id: string, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
-  const pat = G.goals.find(p => p.id === id); return pat ? assembleGoal(pat.parts, owned, citable) : null;
+  const pat = G.goals.find(p => p.id === id); if (!pat) return null;
+  const r = evalGoal(pat, owned, citable); return r.ok ? { ownedIdx: r.ownedIdx, cited: r.cited } : null;
 }
 const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; for (const id in G.players) if (id !== self) out.push(...G.players[id].published); return out; };
 
@@ -544,7 +539,9 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
 // heuristic policy: publish at a hub; grab the boat when it unlocks water-bound forage; drive roads + boat water toward the goal
 export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, p.samples, cit)) return { move: 'publish', args: [pat.id] };
+  // publish at a hub — but skip AP-inefficient small hands mid-field (only cash them when carry is full or it's the lab season); always take a real hand
+  if (p.ap >= 1 && (G.epilogue || isHub(tile))) { const forced = G.epilogue || p.samples.length >= CARRY_SLOTS;
+    for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if ((pat.prestige >= PUBLISH_MIN || forced) && assemble(G, pat.id, p.samples, cit)) return { move: 'publish', args: [pat.id] }; }
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money (free action)
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
@@ -650,7 +647,7 @@ export const Expedition: Game<GState> = {
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand) },
-      goals: buildGoalSet(prng((seed ^ 0x9e3779b1) >>> 0)),   // 8 varied, reusable publish goals drawn per match
+      goals: HANDS.map(h => ({ ...h, counts: [...h.counts] })),   // the fixed poker payout table — always available every match
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },

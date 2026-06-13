@@ -1,8 +1,8 @@
 // Shared board rendering + small UI helpers, used by BOTH frontends (the lean
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
-import type { GState, Tile, Discovery, Pattern, GoalPart } from './game';
-import { targetAP } from './game';
+import type { GState, Tile, Discovery, Pattern } from './game';
+import { targetAP, evalGoal } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -153,16 +153,11 @@ export function sampleChips(ds: Discovery[]): string {
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 
-// ---- publish planner: a constant preview of THIS MATCH's reusable goals and how close the current player is ----
-// A goal is a multiset of parts; each part needs `count` discoveries pinned by discipline and/or colour.
-const CITE_BUDGET = 1;   // mirrors MAX_CITE in game.ts: a goal may borrow ≤1 slot from another player's published work
+// ---- publish planner: the always-available poker payout table + how close the current player is ----
+// Discipline = rank (of-a-kind/full house/straight), colour = suit (flush). evalGoal() (in game.ts) is the single source of truth.
 export const DCOLOR = ['#e0563a', '#36a85a', '#e0c23a', '#a86ae0'];   // the 4 discovery colours (swatches in the planner / chips)
 export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; swatch?: string; }   // have = carried · cite = fillable from others' published · need = missing
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; }
-
-const partMatch = (part: GoalPart, d: Discovery) => (part.type === undefined || d.type === part.type) && (part.color === undefined || d.color === part.color);
-const cellFor = (part: GoalPart, state: PatternCell['state']): PatternCell =>
-  ({ state, icon: part.type !== undefined ? DTYPE_SYMBOL[part.type] : undefined, swatch: part.color !== undefined ? DCOLOR[part.color] : undefined });
 
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   const owned = G.players[pid].samples;
@@ -170,17 +165,11 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 
   return G.goals.map((goal: Pattern) => {
-    const used = new Set<number>(); let budget = CITE_BUDGET, ready = true;
-    const cells: PatternCell[] = [];
-    for (const part of goal.parts) for (let k = 0; k < part.count; k++) {   // expand each part into `count` discovery cells
-      let oi = -1; for (let i = 0; i < owned.length; i++) if (!used.has(i) && partMatch(part, owned[i])) { oi = i; break; }
-      let state: PatternCell['state'];
-      if (oi >= 0) { used.add(oi); state = 'have'; }
-      else if (budget > 0 && citable.some(d => partMatch(part, d))) { budget--; state = 'cite'; }
-      else { state = 'need'; ready = false; }
-      cells.push(cellFor(part, state));
-    }
-    return { name: goal.id, label: goal.label, reward: `+${goal.prestige}P +${goal.money}$`, cells, ready };
+    const r = evalGoal(goal, owned, citable);
+    const cells: PatternCell[] = r.slots.map(s => goal.axis === 'type'
+      ? { state: s.state, icon: DTYPE_SYMBOL[s.value as Discovery['type']] }
+      : { state: s.state, swatch: DCOLOR[s.value as number] });
+    return { name: goal.id, label: goal.label, reward: `+${goal.prestige}P +${goal.money}$`, cells, ready: r.ok };
   });
 }
 
