@@ -18,7 +18,7 @@ A **branching river system** carves the board (no large open water — channels 
 
 Everything that moves is an **edge link on a base tile** — four bitmasks (`N1 E2 S4 W8`): `roads`, `paths`, `smallRivers` (brooks), `blocked` (cliffs).
 
-Terrains: **road** (fast, sparse finds), **wild** (rich), **forest** (medium), **rocky** (geology-rich outcrops — lots of `geo`, mid `arch`, low `zoo`/`bot`), **water**.
+Terrains (per-tile token count varies within a range; roads are an **edge overlay** on a land base, not their own terrain): **grassland** (fast 1-AP going, sparse finds), **jungle** (rich flora + fauna — `bot`/`zoo` heavy), **rocky** (geology-rich outcrops — lots of `geo`, mid `arch`), **water** (river — boat/bridge only), **void** (off-board gaps).
 
 **Crossings (organic):** exactly **1 central road bridge** (the only *defined* crossing — river cell nearest map centre, on the road network) + **2 foot bridges** on random river tiles. Some sections may end up **boat-only** or fully **isolated** — that's allowed; the play area simply shrinks.
 
@@ -64,7 +64,7 @@ Validation uses a **dry graph** (river = hard barrier) so the centre crossing st
 ## Events (one deck, 1 draw/turn)
 
 Mostly benign (spare AP / money) with rare hazards:
-- **Rockslide** — mutates a wild/forest tile to rocky (loses its finds).
+- **Rockslide** — mutates a jungle tile to rocky (loses its finds).
 - **Washout** — severs a random crossing's edges (never the last intact one).
 - **Monsoon** — `MONSOON_END = 4` copies stacked at the deck **bottom**; as they surface the storm telegraphs, then the game enters the epilogue.
 

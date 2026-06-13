@@ -1,7 +1,7 @@
 import type { Game, Move } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
 
-export type Terrain = 'grassland' | 'wild' | 'forest' | 'rocky' | 'water' | 'void';  // roads are an edge overlay on a land base, not a terrain; void = off-board
+export type Terrain = 'grassland' | 'jungle' | 'rocky' | 'water' | 'void';  // roads are an edge overlay on a land base, not a terrain; void = off-board
 export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
@@ -23,7 +23,7 @@ let N = 10;                  // grid dimension (square), chosen per-match in [10
 const DIM_MIN = 10, DIM_MAX = 15, ACTIVE_TILES = 110, START_AP = 4,  // fixed 15×15 footprint, ~110 tiles kept active (rest void) → consistent size + spread  // 4 AP/round
   COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12;  // FIND_CHANCE: each potential slot (gray dot) yields a discovery on reveal, else empty  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
-const RICH: Record<Terrain, [number, number]> = { grassland: [0, 2], wild: [2, 4], forest: [1, 3], rocky: [2, 4], water: [0, 0], void: [0, 0] };  // [min,max] potential tokens — rolled per tile
+const RICH: Record<Terrain, [number, number]> = { grassland: [0, 2], jungle: [2, 4], rocky: [2, 4], water: [0, 0], void: [0, 0] };  // [min,max] potential tokens — rolled per tile
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
 const grass = (map: Tile[], a: number, b: number) => map[a].terrain === 'grassland' || map[b].terrain === 'grassland';  // grassland = fast going (path-like)
@@ -81,11 +81,10 @@ const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  
 
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
-  forest:    { bot: 6, zoo: 2, arch: 2, geo: 1 },   // botany-dominant (dense flora)
-  wild:      { zoo: 5, bot: 4, arch: 1, geo: 1 },   // zoology-dominant wilderness (fauna)
+  jungle:    { bot: 4, zoo: 4, arch: 2, geo: 1 },   // dense flora + fauna (botany & zoology rich)
   rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
 };
-const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, wild: 2, forest: 1, rocky: 3 };  // each biome leans toward a signature colour
+const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, jungle: 2, rocky: 3 };  // each biome leans toward a signature colour
 function buildPool(t: Terrain, rand: () => number): Discovery[] {
   const out: Discovery[] = [], w = WEIGHTS[t]!, bias = BIOME_COLOR[t];
   (Object.keys(w) as DType[]).forEach(k => {
@@ -153,7 +152,7 @@ function genOnce(seed: number) {
   for (let k = 0; k < 2 && cand.length; k++) { const i = cand.splice(Math.floor(rand() * cand.length), 1)[0]; g[i].bridge = 'foot'; bridges.push(i); }
 
   // roads: built OUTWARD from the central bridge (overlay on a land base grass/wild/rock); a road cell = one carrying a road edge
-  const roadBase = (): Terrain => (['grassland', 'wild', 'rocky'] as Terrain[])[Math.floor(rand() * 3)];
+  const roadBase = (): Terrain => (['grassland', 'jungle', 'rocky'] as Terrain[])[Math.floor(rand() * 3)];
   const baseRow = (bridges[0] / N) | 0, bcol = bridges[0] % N;
   for (const dd of [-1, 1]) {                                         // flank the bridge W & E to span both banks (the river crossing)
     const c = bcol + dd; if (c < 0 || c >= N) continue;
@@ -164,13 +163,13 @@ function genOnce(seed: number) {
   const branchN = 3 + Math.round((N - 10) / 3);   // a few road branches grown outward from the centre
   for (let b = 0; b < branchN; b++) { const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)]; const len = 3 + Math.floor(rand() * 3); for (let s = 0; s < len; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, roadBase()); link(i, j); i = j; } }
 
-  // flood wild, carve forest + rocky + grassland (all passable land; rocky moves at 2 AP just like wild, bushwhack)
-  for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'wild');
-  const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'wild' && g[i].roads === 0) set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'wild' && g[j].roads === 0); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };   // never carve over a road overlay (set() would wipe its edges)
+  // flood jungle, carve rocky + grassland patches (all passable land; rocky/jungle = 2 AP bushwhack)
+  for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'jungle');
+  const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'jungle' && g[i].roads === 0) set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'jungle' && g[j].roads === 0); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };   // never carve over a road overlay (set() would wipe its edges)
   const scale = (N * N) / 100;   // patch counts scale with board area (10×10 … 15×15)
-  carve('forest', Math.round(5 * scale), 5); carve('rocky', Math.round(6 * scale), 4); carve('grassland', Math.round(6 * scale), 5);
+  carve('rocky', Math.round(6 * scale), 4); carve('grassland', Math.round(8 * scale), 5);
   // CLIFFS: 1–2 uncrossable edges on some land tiles (plain land↔land only — never roads/water/bridges, so the laid networks stay intact)
-  const isLand = (i: number) => { const t = g[i].terrain; return t === 'wild' || t === 'forest' || t === 'rocky' || t === 'grassland'; };
+  const isLand = (i: number) => { const t = g[i].terrain; return t === 'jungle' || t === 'rocky' || t === 'grassland'; };
   for (let i = 0; i < N * N; i++) {
     if (!isLand(i) || rand() >= 0.14) continue;                    // only some land tiles get cliffs
     const cand = nbrs(i).filter(j => isLand(j) && !(g[i].roads & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
@@ -206,19 +205,19 @@ function genOnce(seed: number) {
   const seeds = [...footBr]; for (let k = 0; k < 4 && roadAll.length; k++) seeds.push(roadAll[Math.floor(rand() * roadAll.length)]);   // more road trailheads
   for (const hs of ['base', 'village', 'remote'] as const) { const i = g.findIndex(t => t && t.hotspot === hs); if (i >= 0) seeds.push(i); }   // trails also leave the base, market & remote
   for (const sd of seeds) {
-    const o0 = nbrs(sd).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
+    const o0 = nbrs(sd).filter(j => g[j].terrain === 'jungle' && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
     let i = o0[Math.floor(rand() * o0.length)]; linkP(sd, i);
-    for (let s = 0; s < 4; s++) { const opts = nbrs(i).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }
+    for (let s = 0; s < 4; s++) { const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }
 
   // BROOKS: boat-only side-channels — mouth at a river tile, then link consecutive land cells inward (laid as edge overlays, not water)
   let brooksMade = 0; const brookN = 1 + (rand() < 0.5 ? 0 : 1);
   for (let att = 0; att < 14 && brooksMade < brookN; att++) {
     const rt = allRiver[Math.floor(rand() * allRiver.length)];
-    const mouths = nbrs(rt).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[rt].blocked & dirBit(rt, j)));
+    const mouths = nbrs(rt).filter(j => g[j].terrain === 'jungle' && !(g[rt].blocked & dirBit(rt, j)));
     if (!mouths.length) continue;
     let i = mouths[Math.floor(rand() * mouths.length)]; linkS(rt, i); let len = 1;
     for (let s = 0; s < 4; s++) {
-      const opts = nbrs(i).filter(j => (g[j].terrain === 'wild' || g[j].terrain === 'forest') && !(g[i].smallRivers & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
+      const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].smallRivers & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
       if (!opts.length) break;
       const j = opts[Math.floor(rand() * opts.length)]; linkS(i, j); i = j; len++;
     }
@@ -250,9 +249,9 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   const reach = new Set<number>([base]); const stk = [base];
   while (stk.length) { const u = stk.pop()!; for (const v of nbrs(u)) if (!reach.has(v) && canMove(g, u, v)) { reach.add(v); stk.push(v); } }
   const roads: number[] = [], land: number[] = [];
-  for (const i of reach) { if (g[i].roads !== 0) roads.push(i); else if (g[i].terrain === 'wild' || g[i].terrain === 'forest') land.push(i); }
+  for (const i of reach) { if (g[i].roads !== 0) roads.push(i); else if (g[i].terrain === 'jungle') land.push(i); }
   if (roads.length < 2 || land.length < 6) return false;          // base area must have enough forage to play
-  const allLand: number[] = []; for (let i = 0; i < N * N; i++) if ((g[i].terrain === 'wild' || g[i].terrain === 'forest') && g[i].roads === 0) allLand.push(i);
+  const allLand: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'jungle' && g[i].roads === 0) allLand.push(i);
   const dist = (a: number, b: number) => Math.abs(((a / N) | 0) - ((b / N) | 0)) + Math.abs((a % N) - (b % N));
   g[base].hotspot = 'base';                                        // main hub — on the road
   const rds = roads.filter(i => i !== base);                       // market sits MID-road, not at the far end
@@ -502,8 +501,8 @@ function applyEvent(G: GState, id: string, random: any, cur: string) {
   else if (id === 'cache') p.money += 2;
   else if (id === 'grant') p.money += 3;
   else if (id === 'calm') { /* no-op filler */ }
-  else if (id === 'rockslide') {                                      // mutate a wild/forest tile → rocky (loses its finds)
-    const land = G.map.map((t, i) => ({ t, i })).filter(({ t }) => (t.terrain === 'wild' || t.terrain === 'forest') && !t.hotspot);
+  else if (id === 'rockslide') {                                      // mutate a jungle tile → rocky (loses its finds)
+    const land = G.map.map((t, i) => ({ t, i })).filter(({ t }) => t.terrain === 'jungle' && !t.hotspot);
     if (land.length) { const { i } = land[random.Die(land.length) - 1]; G.map[i].terrain = 'rocky'; G.map[i].richness = 0; G.map[i].finds = []; }
   } else if (id === 'washout') {                                      // sever a bridge crossing — never the last intact one
     if (intactCrossings(G.map) > 1) {
@@ -532,7 +531,7 @@ export const Expedition: Game<GState> = {
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, gear: 0, boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
-      pools: { grassland: buildPool('grassland', colorRand), wild: buildPool('wild', colorRand), forest: buildPool('forest', colorRand), rocky: buildPool('rocky', colorRand) },
+      pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand) },
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
