@@ -154,13 +154,12 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null) {
-  const fs = CELL * 0.4;
-  cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'bottom';
+  const fs = CELL * 0.4, cy = y + CELL * 0.64;           // below centre, nudged toward the tile centre
+  cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
   cctx.globalAlpha = driver ? 1 : 0.55;                 // empty car dimmer
-  cctx.fillText('🚗', x + CELL / 2, y + CELL - 1);       // centre-bottom
+  cctx.fillText('🚗', x + CELL / 2, cy);
   cctx.globalAlpha = 1;
-  if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL / 2 + fs * 0.5, y + CELL - fs * 0.75, 2.6, 0, 7); cctx.fill(); cctx.stroke(); }
-  cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
+  if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL / 2 + fs * 0.5, cy - fs * 0.3, 2.6, 0, 7); cctx.fill(); cctx.stroke(); }
 }
 
 export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: any, opts: { hover?: number; targets?: Map<number, Action> } = {}) {
