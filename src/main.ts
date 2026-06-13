@@ -14,6 +14,7 @@ import {
 
 const $ = (id: string) => document.getElementById(id)!;
 const canvas = $('board') as HTMLCanvasElement;
+$('built').textContent = `built ${__BUILD_TIME__}`;
 
 const client = Client<GState>({ game: Expedition, numPlayers: 2 });
 client.start();

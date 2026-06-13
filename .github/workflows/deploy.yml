@@ -56,6 +56,7 @@ jobs:
             echo "dest=$dest"
             echo "base=$base"
             echo "url=$url"
+            echo "built=$(date -u '+%Y-%m-%d %H:%M UTC')"
           } >> "$GITHUB_OUTPUT"
           echo "Deploying $branch -> ${dest:-<root>}  ($url)"
 
@@ -64,6 +65,8 @@ jobs:
       - run: npm run smoke
 
       - name: Build
+        env:
+          VITE_BUILD_TIME: ${{ steps.vars.outputs.built }}
         run: npm run build -- --base="${{ steps.vars.outputs.base }}"
 
       - name: Publish subfolder to gh-pages
