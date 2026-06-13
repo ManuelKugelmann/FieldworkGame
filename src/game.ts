@@ -183,14 +183,21 @@ function genOnce(seed: number) {
     if (!g[i]) set(i, roadBase()); link(bridges[0], i);
   }
   const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].roads !== 0 && !g[i].bridge) a.push(i); return a; };
-  const branchN = 3 + Math.round((N - 10) / 3);   // a few road branches grown outward from the centre
+  const distCtr = (r: number, c: number) => Math.abs(r - N / 2) + Math.abs(c - N / 2);
+  const branchN = 2 + Math.round((N - 10) / 4);   // fewer road branches…
   for (let b = 0; b < branchN; b++) {
     const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)];
     const init = nbrs(i).filter(j => !g[j]); if (!init.length) continue;
-    const j0 = init[Math.floor(rand() * init.length)]; let dir: [number, number] = [((j0 / N) | 0) - ((i / N) | 0), (j0 % N) - (i % N)];
-    const len = 3 + Math.floor(rand() * 3);
+    const j0 = init.slice().sort((p, q) => distCtr((q / N) | 0, q % N) - distCtr((p / N) | 0, p % N))[0];   // …start outward (the empty neighbour farthest from the centre)
+    let dir: [number, number] = [((j0 / N) | 0) - ((i / N) | 0), (j0 % N) - (i % N)];
+    const len = 5 + Math.floor(rand() * 4);   // …but longer → a bit more road overall
     for (let s = 0; s < len; s++) {
-      let chosen = dir; if (rand() < 0.5) { const ps = perp(dir); chosen = ps[Math.floor(rand() * 2)]; }   // balanced 50:50 turn/straight
+      let chosen = dir;
+      if (rand() < 0.5) {                                          // balanced 50:50 turn/straight, the turn mildly nudged outward (away from centre)
+        const ps = perp(dir), cr = (i / N) | 0, cc = i % N;
+        const out = distCtr(cr + ps[0][0], cc + ps[0][1]) >= distCtr(cr + ps[1][0], cc + ps[1][1]) ? ps[0] : ps[1];
+        chosen = rand() < 0.3 ? out : ps[Math.floor(rand() * 2)];
+      }
       let moved = false;
       for (const d of [chosen, dir, ...perp(dir)]) {
         const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; if (r < 0 || r >= N || c < 0 || c >= N) continue;
