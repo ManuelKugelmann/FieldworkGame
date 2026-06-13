@@ -1,7 +1,7 @@
 // Shared board rendering + small UI helpers, used by BOTH frontends (the lean
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
-import type { GState, Tile, Discovery, Pattern } from './game';
+import type { GState, Tile, Discovery, Pattern, GoalPart } from './game';
 import { targetAP } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
@@ -23,7 +23,7 @@ export function classifyLog(line: string): Toast | null {
     if (res === 'destroyed') return { text: `${prettyTag(tag)} destroyed · −1 AP`, kind: 'bad' };
     return null;
   }
-  if (line.startsWith('publish ')) { const m = line.match(/publish (\w+).*?(\+\d+P)/); return { text: (m ? `Published ${m[1]} ${m[2]}` : 'Published') + ' · −1 AP', kind: 'good' }; }
+  if (line.startsWith('publish ')) { const m = line.match(/(\+\d+P)/); return { text: `Published${m ? ` ${m[1]}` : ''} · −1 AP`, kind: 'good' }; }
   if (line.startsWith('buy gear')) return { text: 'Bought gear', kind: 'info' };
   if (line.startsWith('drive')) return { text: 'Drove · −1 AP', kind: 'info' };
   if (line.startsWith('helilift')) return { text: 'Helilift → base · −1 AP', kind: 'info' };
@@ -121,7 +121,7 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 // label for a non-spatial action button (move/drive are board clicks -> null)
 export function actionLabel(a: Action, tile: Tile, goals?: Pattern[]): string | null {
   if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)}` : null; }
-  if (a.move === 'publish') { const g = goals?.find(x => x.name === a.args![0]); return g ? `Publish ${g.label} (+${g.prestige}P)` : 'Publish'; }
+  if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${g.label} (+${g.prestige}P)` : 'Publish'; }
   if (a.move === 'buy') return 'Buy gear (−5$)';
   if (a.move === 'board') return 'Board car';
   if (a.move === 'leave') return 'Leave car';
@@ -153,45 +153,34 @@ export function sampleChips(ds: Discovery[]): string {
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 
-// ---- publish planner: a constant preview of the FIXED goal set and how close the current player is ----
-// Goals are predefined (one per axis × shape); each goal keys exactly one axis (discipline or colour).
+// ---- publish planner: a constant preview of THIS MATCH's reusable goals and how close the current player is ----
+// A goal is a multiset of parts; each part needs `count` discoveries pinned by discipline and/or colour.
 const CITE_BUDGET = 1;   // mirrors MAX_CITE in game.ts: a goal may borrow ≤1 slot from another player's published work
-const DTYPES_R: Discovery['type'][] = ['geo', 'zoo', 'bot', 'arch'];
-export const DCOLOR = ['#e0563a', '#3aa0e0', '#e0c23a', '#a86ae0'];   // the 4 discovery colours (swatches in the planner / chips)
-const N_COLOR = DCOLOR.length;
+export const DCOLOR = ['#e0563a', '#36a85a', '#e0c23a', '#a86ae0'];   // the 4 discovery colours (swatches in the planner / chips)
 export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; swatch?: string; }   // have = carried · cite = fillable from others' published · need = missing
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; }
 
-const cellFor = (axis: 'type' | 'color', v: Discovery['type'] | number, state: PatternCell['state']): PatternCell =>
-  axis === 'type' ? { state, icon: DTYPE_SYMBOL[v as Discovery['type']] } : { state, swatch: DCOLOR[v as number] };
-const axisValsR = (axis: 'type' | 'color'): (Discovery['type'] | number)[] =>
-  axis === 'type' ? DTYPES_R : Array.from({ length: N_COLOR }, (_, i) => i);
-const getR = (d: Discovery, axis: 'type' | 'color') => axis === 'type' ? d.type : d.color;
+const partMatch = (part: GoalPart, d: Discovery) => (part.type === undefined || d.type === part.type) && (part.color === undefined || d.color === part.color);
+const cellFor = (part: GoalPart, state: PatternCell['state']): PatternCell =>
+  ({ state, icon: part.type !== undefined ? DTYPE_SYMBOL[part.type] : undefined, swatch: part.color !== undefined ? DCOLOR[part.color] : undefined });
 
-// preview each of THIS MATCH's active goals (G.goals — 8 of 10 variants)
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   const owned = G.players[pid].samples;
   const citable: Discovery[] = [];
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 
   return G.goals.map((goal: Pattern) => {
-    const reward = `+${goal.prestige}P +${goal.money}$`;
-    if (goal.shape === 'triple') {                                   // a specific-value triple: 3 of goal.value
-      const v = goal.value!;
-      const o = owned.filter(d => getR(d, goal.axis) === v).length, c = citable.filter(d => getR(d, goal.axis) === v).length;
-      const ready = o + Math.min(c, CITE_BUDGET) >= 3 && 3 - o <= CITE_BUDGET;
-      let cu = 0;
-      const cells = [0, 1, 2].map(k => cellFor(goal.axis, v, k < Math.min(3, o) ? 'have' : (c > 0 && cu++ < CITE_BUDGET ? 'cite' : 'need')));
-      return { name: goal.name, label: goal.label, reward, cells, ready };
+    const used = new Set<number>(); let budget = CITE_BUDGET, ready = true;
+    const cells: PatternCell[] = [];
+    for (const part of goal.parts) for (let k = 0; k < part.count; k++) {   // expand each part into `count` discovery cells
+      let oi = -1; for (let i = 0; i < owned.length; i++) if (!used.has(i) && partMatch(part, owned[i])) { oi = i; break; }
+      let state: PatternCell['state'];
+      if (oi >= 0) { used.add(oi); state = 'have'; }
+      else if (budget > 0 && citable.some(d => partMatch(part, d))) { budget--; state = 'cite'; }
+      else { state = 'need'; ready = false; }
+      cells.push(cellFor(part, state));
     }
-    const used = new Set<number>(); let budget = CITE_BUDGET;        // rainbow: one-of-each on the axis
-    const cells = axisValsR(goal.axis).map(v => {
-      const oi = owned.findIndex((d, i) => !used.has(i) && getR(d, goal.axis) === v);
-      if (oi >= 0) { used.add(oi); return cellFor(goal.axis, v, 'have'); }
-      if (citable.some(d => getR(d, goal.axis) === v) && budget > 0) { budget--; return cellFor(goal.axis, v, 'cite'); }
-      return cellFor(goal.axis, v, 'need');
-    });
-    return { name: goal.name, label: goal.label, reward, cells, ready: !cells.some(c => c.state === 'need') };
+    return { name: goal.id, label: goal.label, reward: `+${goal.prestige}P +${goal.money}$`, cells, ready };
   });
 }
 

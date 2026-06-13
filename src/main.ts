@@ -98,9 +98,12 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap}AP · 🌧${G.monsoon}/4`;
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
-    const cells = pat.cells.map(c => c.swatch
-      ? `<span class="cell ${c.state}"><span class="sw" style="background:${c.swatch}"></span></span>`
-      : `<span class="cell ${c.state}">${c.icon}</span>`).join('');
+    const cells = pat.cells.map(c => {
+      const inner = c.swatch && c.icon ? `<span class="sw" style="background:${c.swatch}">${c.icon}</span>`
+        : c.swatch ? `<span class="sw" style="background:${c.swatch}"></span>`
+        : (c.icon ?? '·');
+      return `<span class="cell ${c.state}">${inner}</span>`;
+    }).join('');
     return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.label}</span>` +
       `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${pat.ready ? ' ✓' : ''}</span>`;
   }).join('');
