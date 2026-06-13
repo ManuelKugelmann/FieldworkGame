@@ -139,13 +139,17 @@ function genOnce(seed: number) {
     used[k] = true; armDirs.push(CARD[k]);
   }
   // place all 3 launch cells FIRST (the junction is the only 3-way tile), then grow the arms in ALTERNATION (round-robin), each meandering 50:50 straight / 90° turn
-  const arms = armDirs.map(dir0 => { const fr = jr + dir0[0], fc = jc + dir0[1]; addW(ix(fr, fc)); return { r: fr, c: fc, prev: ix(fr, fc), dir: dir0, active: true }; });
+  const arms = armDirs.map(dir0 => { const fr = jr + dir0[0], fc = jc + dir0[1]; addW(ix(fr, fc)); return { r: fr, c: fc, prev: ix(fr, fc), dir: dir0, dir0, active: true }; });
   for (let step = 0; step < N * N; step++) {
     const live = arms.filter(a => a.active); if (!live.length) break;
     const arm = live[Math.floor(rand() * live.length)];          // extend a RANDOMLY chosen arm each step
     if (arm.r === 0 || arm.r === N - 1 || arm.c === 0 || arm.c === N - 1) { arm.active = false; continue; }   // reached the boundary
     let chosen = arm.dir;
-    if (rand() < 0.5) { const ps = perp(arm.dir); chosen = ps[Math.floor(rand() * 2)]; }
+    if (rand() < 0.3) {                                          // 30% turn / 70% straight, the turn gently biased outward (toward the launch direction)
+      const ps = perp(arm.dir);
+      const out = (ps[0][0] * arm.dir0[0] + ps[0][1] * arm.dir0[1]) >= (ps[1][0] * arm.dir0[0] + ps[1][1] * arm.dir0[1]) ? ps[0] : ps[1];
+      chosen = rand() < 0.7 ? out : ps[Math.floor(rand() * 2)];
+    }
     let moved = false;
     for (const d of [chosen, arm.dir, ...perp(arm.dir)]) {
       const nr = arm.r + d[0], nc = arm.c + d[1]; if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
@@ -162,11 +166,12 @@ function genOnce(seed: number) {
   const dc = (i: number) => Math.abs(((i / N) | 0) - N / 2) + Math.abs((i % N) - N / 2);
   const centralRow = river.filter(i => { const r = (i / N) | 0; return r >= N / 3 && r <= 2 * N / 3; });   // pin the bridge to the centre quadrant
   const notWater = (j: number) => !g[j] || g[j].terrain !== 'water';
-  const straightX = (i: number) => { const c = i % N; return c > 0 && c < N - 1 && notWater(i - 1) && notWater(i + 1); };   // land both sides → road crosses straight
+  const straightX = (i: number) => { const c = i % N; return c > 0 && c < N - 1 && notWater(i - 1) && notWater(i + 1); };   // land W&E → road crosses straight (W-E)
+  const straightAny = (i: number) => { const r = (i / N) | 0, c = i % N; return (c > 0 && c < N - 1 && notWater(i - 1) && notWater(i + 1)) || (r > 0 && r < N - 1 && notWater(i - N) && notWater(i + N)); };   // land on two opposite sides → a straight crossing (either axis)
   const ctrPool = centralRow.filter(straightX);
   const ctr = (ctrPool.length ? ctrPool : centralRow.length ? centralRow : river).slice().sort((a, b) => dc(a) - dc(b))[0];   // on the TRUNK, a straight road crossing where possible
   g[ctr].bridge = 'road'; const bridges = [ctr];
-  const cand = allRiver.filter(i => i !== ctr);                    // exactly 2 foot crossings on random river tiles
+  const cand = allRiver.filter(i => i !== ctr && straightAny(i));  // foot crossings also on STRAIGHT river tiles (perpendicular land both sides)
   for (let k = 0; k < 2 && cand.length; k++) { const i = cand.splice(Math.floor(rand() * cand.length), 1)[0]; g[i].bridge = 'foot'; bridges.push(i); }
 
   // roads: built OUTWARD from the central bridge (overlay on a land base grass/wild/rock); a road cell = one carrying a road edge
@@ -185,7 +190,7 @@ function genOnce(seed: number) {
     const j0 = init[Math.floor(rand() * init.length)]; let dir: [number, number] = [((j0 / N) | 0) - ((i / N) | 0), (j0 % N) - (i % N)];
     const len = 3 + Math.floor(rand() * 3);
     for (let s = 0; s < len; s++) {
-      let chosen = dir; if (rand() < 0.5) { const ps = perp(dir); chosen = ps[Math.floor(rand() * 2)]; }   // 50:50 straight vs 90° turn
+      let chosen = dir; if (rand() < 0.3) { const ps = perp(dir); chosen = ps[Math.floor(rand() * 2)]; }   // 30% turn / 70% straight
       let moved = false;
       for (const d of [chosen, dir, ...perp(dir)]) {
         const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; if (r < 0 || r >= N || c < 0 || c >= N) continue;
@@ -240,7 +245,14 @@ function genOnce(seed: number) {
 
   // FOOTPATH JUNCTIONS: trails seed from foot bridges, anywhere on the roads, and every special location; they fizzle out in the jungle
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
-  for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water' && g[j].terrain !== 'void' && !(g[fb].blocked & dirBit(fb, j))) linkP(fb, j);
+  for (const fb of footBr) {                                       // link a STRAIGHT crossing: the two opposite land banks (perpendicular to the river arm)
+    const r = (fb / N) | 0, c = fb % N;
+    const axes: [number, number, boolean][] = [[fb - 1, fb + 1, c > 0 && c < N - 1], [fb - N, fb + N, r > 0 && r < N - 1]];
+    for (const [a, b, ok] of axes) {
+      const land = (j: number) => g[j].terrain !== 'water' && g[j].terrain !== 'void';
+      if (ok && land(a) && land(b) && !(g[fb].blocked & dirBit(fb, a)) && !(g[fb].blocked & dirBit(fb, b))) { linkP(fb, a); linkP(fb, b); break; }
+    }
+  }
   const roadAll: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].roads !== 0) roadAll.push(i);
   const junctions = [...footBr];
   for (let k = 0; k < 5 && roadAll.length; k++) junctions.push(roadAll[Math.floor(rand() * roadAll.length)]);   // anywhere on the roads
