@@ -184,13 +184,9 @@ function genOnce(seed: number) {
   }
   const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].roads !== 0 && !g[i].bridge) a.push(i); return a; };
   const distCtr = (r: number, c: number) => Math.abs(r - N / 2) + Math.abs(c - N / 2);
-  const branchN = 2 + Math.round((N - 10) / 4);   // fewer road branches…
-  for (let b = 0; b < branchN; b++) {
-    const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)];
-    const init = nbrs(i).filter(j => !g[j]); if (!init.length) continue;
-    const j0 = init.slice().sort((p, q) => distCtr((q / N) | 0, q % N) - distCtr((p / N) | 0, p % N))[0];   // …start outward (the empty neighbour farthest from the centre)
-    let dir: [number, number] = [((j0 / N) | 0) - ((i / N) | 0), (j0 % N) - (i % N)];
-    const len = 5 + Math.floor(rand() * 4);   // …but longer → a bit more road overall
+  // grow a meandering road run from `i` heading `dir0` for `len` steps (balanced 50:50 turn/straight, the turn mildly nudged outward)
+  const growArm = (i: number, dir0: [number, number], len: number): void => {
+    let dir = dir0;
     for (let s = 0; s < len; s++) {
       let chosen = dir;
       if (rand() < 0.5) {                                          // balanced 50:50 turn/straight, the turn mildly nudged outward (away from centre)
@@ -206,6 +202,24 @@ function genOnce(seed: number) {
       }
       if (!moved) break;
     }
+  };
+  // TWO road 3-way junctions (Y/T splits, mirroring the river's one 3-way): each junction cell carries three road edges — one back to the network, two outward arms
+  const freeDir = (i: number, d: [number, number]) => { const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; return r >= 0 && r < N && c >= 0 && c < N && !g[ix(r, c)]; };
+  for (let b = 0; b < 2; b++) {
+    let anchor = -1, junc = -1, arms: [number, number][] = [];
+    for (const a of roadCells().sort(() => rand() - 0.5)) {                       // scan road cells (randomised) for a spot that yields a clean 3-way
+      const js = nbrs(a).filter(j => !g[j]).sort((p, q) => distCtr((q / N) | 0, q % N) - distCtr((p / N) | 0, p % N));   // junction sits on the outward empty neighbour
+      for (const j of js) {
+        const back: [number, number] = [((a / N) | 0) - ((j / N) | 0), (a % N) - (j % N)];   // direction back to the network (excluded from the arms)
+        const fa = CARD.filter(d => !(d[0] === back[0] && d[1] === back[1]) && freeDir(j, d))
+                       .sort((p, q) => distCtr(((j / N) | 0) + q[0], (j % N) + q[1]) - distCtr(((j / N) | 0) + p[0], (j % N) + p[1]));   // outward arms first
+        if (fa.length >= 2) { anchor = a; junc = j; arms = fa.slice(0, 2); break; }
+      }
+      if (junc >= 0) break;
+    }
+    if (junc < 0) break;
+    set(junc, roadBase()); link(anchor, junc);                                   // edge back to the network
+    for (const d of arms) growArm(junc, d, 4 + Math.floor(rand() * 4));          // two outward arms complete the 3-way
   }
 
   // flood jungle, carve rocky + grassland patches (all passable land; rocky/jungle = 2 AP bushwhack)
