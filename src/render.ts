@@ -255,9 +255,9 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     cctx.font = `bold ${Math.max(9, CELL * 0.28)}px ui-monospace, monospace`;
     for (const [t, a] of targets) {
       const c = t % G.cols, r = (t / G.cols) | 0, x = c * CELL, y = r * CELL;
-      cctx.strokeStyle = '#ffd24a'; cctx.lineWidth = 2.5;
+      cctx.strokeStyle = '#ffd24a'; cctx.lineWidth = 1.25;
       cctx.setLineDash(a.move === 'move' ? [] : [4, 3]);   // dashed = vehicle hop (drive / boat-run)
-      cctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
+      cctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);   // thin ring hugging the tile edge → leaves the inner markers visible
       cctx.setLineDash([]);
       const ap = targetAP(G, ctxState.currentPlayer, a);
       const label = Number.isInteger(ap) ? String(ap) : ap.toFixed(1);   // car costs are fractional (1 AP ÷ CAR_STEPS/tile)
