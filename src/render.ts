@@ -24,7 +24,7 @@ export function classifyLog(line: string): Toast | null {
     return null;
   }
   if (line.startsWith('publish ')) { const m = line.match(/publish (\w+).*?(\+\d+P)/); return { text: (m ? `Published ${m[1]} ${m[2]}` : 'Published') + ' · −1 AP', kind: 'good' }; }
-  if (line.startsWith('buy gear')) return { text: 'Bought gear · −1 AP', kind: 'info' };
+  if (line.startsWith('buy gear')) return { text: 'Bought gear', kind: 'info' };
   if (line.startsWith('drive')) return { text: 'Drove · −1 AP', kind: 'info' };
   if (line.startsWith('helilift')) return { text: 'Helilift → base · −1 AP', kind: 'info' };
   if (line.startsWith('event:')) { const id = line.slice(6).split(' ')[0]; const bad = id === 'rockslide' || id === 'washout' || id === 'monsoon'; return { text: EVENT_TEXT[id] ?? id, kind: bad ? 'bad' : 'info' }; }
@@ -118,10 +118,14 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
   return m;
 }
 
+const PUBLISH_LABEL: Record<string, string> = {   // fixed goal name → button text
+  discTriple: 'disc triple (+2P)', colTriple: 'colour triple (+2P)',
+  discRainbow: 'disc rainbow (+4P)', colRainbow: 'colour rainbow (+4P)',
+};
 // label for a non-spatial action button (move/drive are board clicks -> null)
 export function actionLabel(a: Action, tile: Tile): string | null {
   if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)}` : null; }
-  if (a.move === 'publish') return a.args![0] === 'rainbow' ? 'Publish rainbow (+7P)' : 'Publish triple (+4P)';
+  if (a.move === 'publish') { const g = PUBLISH_LABEL[a.args![0] as string]; return g ? `Publish ${g}` : 'Publish'; }
   if (a.move === 'buy') return 'Buy gear (−5$)';
   if (a.move === 'board') return 'Board car';
   if (a.move === 'leave') return 'Leave car';
@@ -153,59 +157,58 @@ export function sampleChips(ds: Discovery[]): string {
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 
-// ---- publish planner: a constant preview of the two patterns and how close the current player is ----
-// Discoveries vary on TWO axes (discipline + colour); a set may form on EITHER. The planner shows whichever axis you're closest on.
-const CITE_BUDGET = 1;   // mirrors MAX_CITE in game.ts: a pattern may borrow ≤1 slot from another player's published work
+// ---- publish planner: a constant preview of the FIXED goal set and how close the current player is ----
+// Goals are predefined (one per axis × shape); each goal keys exactly one axis (discipline or colour).
+const CITE_BUDGET = 1;   // mirrors MAX_CITE in game.ts: a goal may borrow ≤1 slot from another player's published work
 const DTYPES_R: Discovery['type'][] = ['geo', 'zoo', 'bot', 'arch'];
 export const DCOLOR = ['#e0563a', '#3aa0e0', '#e0c23a', '#a86ae0'];   // the 4 discovery colours (swatches in the planner / chips)
 const N_COLOR = DCOLOR.length;
 export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; swatch?: string; }   // have = carried · cite = fillable from others' published · need = missing
-export interface PatternPreview { name: string; reward: string; cells: PatternCell[]; ready: boolean; }
+export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; }
 
-interface AxisDef { get: (d: Discovery) => Discovery['type'] | number; vals: (Discovery['type'] | number)[]; ai: 0 | 1; }
-const AXES_R: AxisDef[] = [
-  { get: d => d.type, vals: DTYPES_R, ai: 0 },
-  { get: d => d.color, vals: Array.from({ length: N_COLOR }, (_, i) => i), ai: 1 },
+const cellFor = (axis: 'type' | 'color', v: Discovery['type'] | number, state: PatternCell['state']): PatternCell =>
+  axis === 'type' ? { state, icon: DTYPE_SYMBOL[v as Discovery['type']] } : { state, swatch: DCOLOR[v as number] };
+const axisValsR = (axis: 'type' | 'color'): (Discovery['type'] | number)[] =>
+  axis === 'type' ? DTYPES_R : Array.from({ length: N_COLOR }, (_, i) => i);
+const getR = (d: Discovery, axis: 'type' | 'color') => axis === 'type' ? d.type : d.color;
+
+// the fixed goals, mirroring PATTERNS in game.ts (kept here so render has no game import for this)
+const GOALS: { name: string; label: string; axis: 'type' | 'color'; shape: 'triple' | 'rainbow'; reward: string }[] = [
+  { name: 'discTriple',  label: 'disc triple',   axis: 'type',  shape: 'triple',  reward: '+2P +1$' },
+  { name: 'colTriple',   label: 'colour triple', axis: 'color', shape: 'triple',  reward: '+2P +1$' },
+  { name: 'discRainbow', label: 'disc rainbow',  axis: 'type',  shape: 'rainbow', reward: '+4P +2$' },
+  { name: 'colRainbow',  label: 'colour rainbow', axis: 'color', shape: 'rainbow', reward: '+4P +2$' },
 ];
-const cellFor = (ax: AxisDef, v: Discovery['type'] | number, state: PatternCell['state']): PatternCell =>
-  ax.ai === 0 ? { state, icon: DTYPE_SYMBOL[v as Discovery['type']] } : { state, swatch: DCOLOR[v as number] };
 
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   const owned = G.players[pid].samples;
   const citable: Discovery[] = [];
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 
-  // triple: 3 sharing one value on either axis — show the (axis,value) you're closest on
-  let trBest: { cells: PatternCell[]; ready: boolean; prox: number } | null = null;
-  for (const ax of AXES_R) for (const v of ax.vals) {
-    const o = owned.filter(d => ax.get(d) === v).length, c = citable.filter(d => ax.get(d) === v).length;
-    const ready = o + Math.min(c, CITE_BUDGET) >= 3 && 3 - o <= CITE_BUDGET;
-    const prox = (ready ? 1000 : 0) + Math.min(3, o) * 10 - Math.max(0, 3 - o);
-    if (trBest && prox <= trBest.prox) continue;
-    let cu = 0;
-    const cells = [0, 1, 2].map(k => cellFor(ax, v, k < Math.min(3, o) ? 'have' : (c > 0 && cu++ < CITE_BUDGET ? 'cite' : 'need')));
-    trBest = { cells, ready, prox };
-  }
-
-  // rainbow: one of each of the 4 values on either axis — show the closer axis
-  let rbBest: { cells: PatternCell[]; ready: boolean; prox: number } | null = null;
-  for (const ax of AXES_R) {
-    const used = new Set<number>(); let budget = CITE_BUDGET, have = 0, cited = 0;
-    const cells = ax.vals.map(v => {
-      const oi = owned.findIndex((d, i) => !used.has(i) && ax.get(d) === v);
-      if (oi >= 0) { used.add(oi); have++; return cellFor(ax, v, 'have'); }
-      if (citable.some(d => ax.get(d) === v) && budget > 0) { budget--; cited++; return cellFor(ax, v, 'cite'); }
-      return cellFor(ax, v, 'need');
+  return GOALS.map(goal => {
+    const vals = axisValsR(goal.axis);
+    if (goal.shape === 'triple') {                                   // show the value on this axis you're closest on
+      let best: { cells: PatternCell[]; ready: boolean; prox: number } | null = null;
+      for (const v of vals) {
+        const o = owned.filter(d => getR(d, goal.axis) === v).length, c = citable.filter(d => getR(d, goal.axis) === v).length;
+        const ready = o + Math.min(c, CITE_BUDGET) >= 3 && 3 - o <= CITE_BUDGET;
+        const prox = (ready ? 1000 : 0) + Math.min(3, o) * 10 - Math.max(0, 3 - o);
+        if (best && prox <= best.prox) continue;
+        let cu = 0;
+        const cells = [0, 1, 2].map(k => cellFor(goal.axis, v, k < Math.min(3, o) ? 'have' : (c > 0 && cu++ < CITE_BUDGET ? 'cite' : 'need')));
+        best = { cells, ready, prox };
+      }
+      return { name: goal.name, label: goal.label, reward: goal.reward, cells: best!.cells, ready: best!.ready };
+    }
+    const used = new Set<number>(); let budget = CITE_BUDGET;        // rainbow: fixed one-of-each on this axis
+    const cells = vals.map(v => {
+      const oi = owned.findIndex((d, i) => !used.has(i) && getR(d, goal.axis) === v);
+      if (oi >= 0) { used.add(oi); return cellFor(goal.axis, v, 'have'); }
+      if (citable.some(d => getR(d, goal.axis) === v) && budget > 0) { budget--; return cellFor(goal.axis, v, 'cite'); }
+      return cellFor(goal.axis, v, 'need');
     });
-    const ready = !cells.some(c => c.state === 'need');
-    const prox = (ready ? 1000 : 0) + have * 10 - cited;
-    if (!rbBest || prox > rbBest.prox) rbBest = { cells, ready, prox };
-  }
-
-  return [
-    { name: 'triple', reward: '+2P +1$', cells: trBest!.cells, ready: trBest!.ready },
-    { name: 'rainbow', reward: '+4P +2$', cells: rbBest!.cells, ready: rbBest!.ready },
-  ];
+    return { name: goal.name, label: goal.label, reward: goal.reward, cells, ready: !cells.some(c => c.state === 'need') };
+  });
 }
 
 function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, color: string, width: number, dash: number[]) {

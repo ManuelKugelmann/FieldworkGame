@@ -424,40 +424,41 @@ const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // re
 };
 
 // ---- research set-patterns. assemble() uses owned samples first, cites others' published pools for any shortfall ----
-const PATTERNS = [
-  { name: 'triple', prestige: 2, money: 1 },   // 3 sharing one value on either axis (discipline or colour)
-  { name: 'rainbow', prestige: 4, money: 2 },  // one of each of the 4 values on either axis
-];
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
-// discoveries vary on TWO independent axes: discipline (type) and colour. A set may form on EITHER axis.
-type Axis = (d: Discovery) => DType | number;
-const AXES: Axis[] = [d => d.type, d => d.color];
-const AXIS_VALS: (DType | number)[][] = [DTYPES, Array.from({ length: COLORS }, (_, i) => i)];
+// discoveries vary on TWO independent axes: discipline (type) and colour. Publish goals are a FIXED, predefined set — one per axis × shape.
+export type AxisName = 'type' | 'color';
+export type ShapeName = 'triple' | 'rainbow';
+const axisGet = (a: AxisName): ((d: Discovery) => DType | number) => a === 'type' ? d => d.type : d => d.color;
+const axisVals = (a: AxisName): (DType | number)[] => a === 'type' ? DTYPES : Array.from({ length: COLORS }, (_, i) => i);
+export interface Pattern { name: string; label: string; axis: AxisName; shape: ShapeName; prestige: number; money: number; }
+const PATTERNS: Pattern[] = [
+  { name: 'discTriple',  label: 'discipline triple',  axis: 'type',  shape: 'triple',  prestige: 2, money: 1 },   // 3 of one discipline
+  { name: 'colTriple',   label: 'colour triple',      axis: 'color', shape: 'triple',  prestige: 2, money: 1 },   // 3 of one colour
+  { name: 'discRainbow', label: 'discipline rainbow', axis: 'type',  shape: 'rainbow', prestige: 4, money: 2 },   // one of each discipline
+  { name: 'colRainbow',  label: 'colour rainbow',     axis: 'color', shape: 'rainbow', prestige: 4, money: 2 },   // one of each colour
+];
+export { PATTERNS };
+// resolve one fixed goal (axis+shape) against carried + citable discoveries
+function assembleGoal(axis: AxisName, shape: ShapeName, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
+  const get = axisGet(axis), vals = axisVals(axis);
+  if (shape === 'triple') {                                           // 3 sharing one value on this axis
+    let best: { ownedIdx: number[]; cited: number } | null = null;
+    for (const V of vals) {
+      const oIdx: number[] = []; owned.forEach((d, i) => { if (get(d) === V) oIdx.push(i); });
+      const cAvail = citable.filter(d => get(d) === V).length;
+      if (oIdx.length + cAvail >= 3) { const useOwned = Math.min(3, oIdx.length); const cand = { ownedIdx: oIdx.slice(0, useOwned), cited: 3 - useOwned }; if (cand.cited <= MAX_CITE && (!best || cand.cited < best.cited)) best = cand; }
+    }
+    return best;
+  }
+  const ownedIdx: number[] = [], used = new Set<number>(); let cited = 0;   // rainbow: one of each value on this axis
+  for (const V of vals) {
+    let oi = -1; for (let i = 0; i < owned.length; i++) if (get(owned[i]) === V && !used.has(i)) { oi = i; break; }
+    if (oi >= 0) { ownedIdx.push(oi); used.add(oi); } else if (citable.some(d => get(d) === V)) cited++; else return null;
+  }
+  return cited <= MAX_CITE ? { ownedIdx, cited } : null;
+}
 function assemble(name: string, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
-  let best: { ownedIdx: number[]; cited: number } | null = null;
-  const take = (cand: { ownedIdx: number[]; cited: number } | null) => { if (cand && cand.cited <= MAX_CITE && (!best || cand.cited < best.cited)) best = cand; };
-  if (name === 'triple') {                                            // 3 sharing one value on EITHER axis (same discipline OR same colour)
-    AXES.forEach((ax, a) => {
-      for (const V of AXIS_VALS[a]) {
-        const oIdx: number[] = []; owned.forEach((d, i) => { if (ax(d) === V) oIdx.push(i); });
-        const cAvail = citable.filter(d => ax(d) === V).length;
-        if (oIdx.length + cAvail >= 3) { const useOwned = Math.min(3, oIdx.length); take({ ownedIdx: oIdx.slice(0, useOwned), cited: 3 - useOwned }); }
-      }
-    });
-    return best;   // own all but MAX_CITE
-  }
-  if (name === 'rainbow') {                                           // one of EACH of the 4 values on EITHER axis (every discipline OR every colour)
-    AXES.forEach((ax, a) => {
-      const ownedIdx: number[] = [], used = new Set<number>(); let cited = 0, ok = true;
-      for (const V of AXIS_VALS[a]) {
-        let oi = -1; for (let i = 0; i < owned.length; i++) if (ax(owned[i]) === V && !used.has(i)) { oi = i; break; }
-        if (oi >= 0) { ownedIdx.push(oi); used.add(oi); } else if (citable.some(d => ax(d) === V)) cited++; else { ok = false; break; }
-      }
-      if (ok) take({ ownedIdx, cited });
-    });
-    return best;   // own all but MAX_CITE
-  }
-  return null;
+  const pat = PATTERNS.find(p => p.name === name); return pat ? assembleGoal(pat.axis, pat.shape, owned, citable) : null;
 }
 const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; for (const id in G.players) if (id !== self) out.push(...G.players[id].published); return out; };
 
@@ -531,7 +532,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
   if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...PATTERNS].sort((a, b) => b.prestige - a.prestige)) if (assemble(pat.name, p.samples, cit)) return { move: 'publish', args: [pat.name] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
-  if (p.ap >= 1 && isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money
+  if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money (free action)
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
   const full = p.samples.length >= CARRY_SLOTS;
@@ -550,10 +551,10 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   return { event: 'endTurn' };
 }
 
-const buy: Move<GState> = ({ G, ctx }) => {                          // upgrade gear at a market (money → catalogue capability)
+const buy: Move<GState> = ({ G, ctx }) => {                          // upgrade gear at a market (money → catalogue capability) — free action, no AP
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
-  if (G.epilogue || p.ap < 1 || !isMarket(tile) || p.gear >= GEAR_MAX || p.money < GEAR_COST) return INVALID_MOVE;
-  p.ap -= 1; p.money -= GEAR_COST; p.gear += 1;
+  if (G.epilogue || !isMarket(tile) || p.gear >= GEAR_MAX || p.money < GEAR_COST) return INVALID_MOVE;
+  p.money -= GEAR_COST; p.gear += 1;
   G.log.push(`buy gear L${p.gear} (-${GEAR_COST}$)`);
 };
 const helilift: Move<GState> = ({ G, ctx }) => {   // airlift to the main hub; pay cash, cover any shortfall with negative-prestige tokens
@@ -577,7 +578,7 @@ export const enumerate = (G: GState, ctx: any) => {
     G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1 && p.samples.length < CARRY_SLOTS) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));
-    if (p.ap >= 1 && isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) out.push({ move: 'buy', args: [] });
+    if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) out.push({ move: 'buy', args: [] });   // free action (no AP)
     if (p.gear >= 1) out.push({ move: 'drop', args: ['gear'] });
     if (p.boat) out.push({ move: 'drop', args: ['boat'] });
     if (tile.equipment.some(e => e.kind === 'gear') && p.gear < GEAR_MAX) out.push({ move: 'pickup', args: ['gear'] });

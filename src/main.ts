@@ -101,7 +101,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const cells = pat.cells.map(c => c.swatch
       ? `<span class="cell ${c.state}"><span class="sw" style="background:${c.swatch}"></span></span>`
       : `<span class="cell ${c.state}">${c.icon}</span>`).join('');
-    return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.name}</span>` +
+    return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.label}</span>` +
       `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${pat.ready ? ' ✓' : ''}</span>`;
   }).join('');
 
