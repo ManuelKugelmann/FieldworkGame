@@ -14,7 +14,7 @@
       h1 { font-size: .92rem; font-weight: 600; margin: 0; display: inline-block; }
       .badge { font-size: .56rem; text-transform: uppercase; letter-spacing: .08em; padding: .1rem .35rem; border-radius: 3px; vertical-align: middle; margin-left: .4rem; background: #3a2f12; color: #e3b765; border: 1px solid #6b5320; }
       .sub { color: #6f8f70; font-size: .72rem; margin: .15rem 0 .5rem; }
-      .controls { margin-bottom: .35rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+      .controls { margin: .6rem 0 .35rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
       .foot { margin: 1rem 0 0; font-size: .72rem; }
       .built { font-size: .6rem; color: #4f6f50; margin-left: auto; }
       label.seat { font-size: .78rem; color: #9fc69a; display: inline-flex; gap: .3rem; align-items: center; }
@@ -52,23 +52,16 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-Hz0-n_Le.js"></script>
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-DaLqDJXk.js"></script>
     <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-BEkm44-F.js">
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
     <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span></h1>
-    <div class="controls">
-      <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
-      <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
-      <button id="hint">Bot: suggest move</button>
-      <button id="reset">New match</button>
-      <span class="built" id="built"></span>
-    </div>
     <div class="cols">
       <div class="boardwrap">
         <canvas id="board"></canvas>
-        <div class="panel inspectwrap"><h2>Inspect</h2><div id="inspect">hover a tile</div></div>
+        <div class="panel inspectwrap"><div id="inspect">hover a tile</div></div>
       </div>
       <div class="side">
         <div id="status"></div>
@@ -76,6 +69,13 @@
         <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
       </div>
+    </div>
+    <div class="controls">
+      <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
+      <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
+      <button id="hint">Bot: suggest move</button>
+      <button id="reset">New match</button>
+      <span class="built" id="built"></span>
     </div>
     <div class="foot"><a href="bgio.html" style="color:#7ad07a">bgio player frontend + Debug Inspector ↗</a></div>
   </body>
