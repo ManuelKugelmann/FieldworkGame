@@ -28,8 +28,11 @@ const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = 
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
 const grass = (map: Tile[], a: number, b: number) => map[a].terrain === 'grassland' || map[b].terrain === 'grassland';  // grassland = fast going (path-like)
 const dirBit = (a: number, b: number) => b === a - N ? 1 : b === a + N ? 4 : b === a + 1 ? 2 : 8;  // N1 E2 S4 W8
-const onPath = (map: Tile[], a: number, b: number) => ((map[a].roads | map[a].paths) & dirBit(a, b)) !== 0;  // road OR foot edge
-const onBlocked = (map: Tile[], a: number, b: number) => (map[a].blocked & dirBit(a, b)) !== 0;  // cliff edge: uncrossable by anyone (foot/car/boat)
+// every link type (roads / footpaths / brooks / cliffs / river channel) is one edge bitmask on the tile; the only difference is which mask + tile prerequisite a mover reads
+type EdgeKind = 'roads' | 'paths' | 'smallRivers' | 'blocked' | 'rivers';
+const hasEdge = (map: Tile[], a: number, b: number, k: EdgeKind) => (map[a][k] & dirBit(a, b)) !== 0;
+const onPath = (map: Tile[], a: number, b: number) => hasEdge(map, a, b, 'roads') || hasEdge(map, a, b, 'paths');  // road OR foot edge
+const onBlocked = (map: Tile[], a: number, b: number) => hasEdge(map, a, b, 'blocked');  // cliff edge: uncrossable by anyone (foot/car/boat)
 // board/leave a bridge only via an edge; land↔land always allowed; cliffs + void hard-block everyone
 const canMoveDry = (map: Tile[], a: number, b: number) => onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b]) || plainRiver(map[a]) || plainRiver(map[b]) ? false : (map[a].bridge || map[b].bridge) ? onPath(map, a, b) : true;  // river = hard barrier (map validation)
 const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph: bridges via edge; open water needs a boat; cliffs/void block all
@@ -47,18 +50,23 @@ const canBoat = (map: Tile[], a: number, b: number) => {           // BOAT graph
 const boatCost = (map: Tile[], a: number, b: number) =>             // water / brook / path / grassland step = 1 AP; portaging the boat over rough dry land = 2
   (plainRiver(map[a]) || plainRiver(map[b]) || onPath(map, a, b) || grass(map, a, b) || (map[a].smallRivers & dirBit(a, b))) ? 1 : 2;
 export const apCost = (G: GState, from: number, to: number, boat: boolean) => (boat ? boatCost : cost)(G.map, from, to);  // AP for a foot/boat step (UI cost hint)
-function roadStepDist(map: Tile[], from: number, to: number): number {   // road-edge BFS distance (for car cost)
+// ---- generic link traversal: a vehicle rides ONE edge kind up to N steps/AP. roads→car, river channel→boat — same code, different `k`. ----
+function linkReach(map: Tile[], from: number, maxSteps: number, k: EdgeKind): number[] {   // cells within maxSteps along link `k`
+  const seen = new Map<number, number>([[from, 0]]); const q = [from]; const out: number[] = [];
+  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; if (d >= maxSteps) continue;
+    for (const v of nbrs(u)) if (!seen.has(v) && hasEdge(map, u, v, k) && !onBlocked(map, u, v)) { seen.set(v, d + 1); out.push(v); q.push(v); } }
+  return out;
+}
+function linkDist(map: Tile[], from: number, to: number, k: EdgeKind): number {            // BFS distance along link `k` (fractional vehicle cost)
   if (from === to) return 0;
   const seen = new Map<number, number>([[from, 0]]); const q = [from];
-  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; for (const v of nbrs(u)) if (!seen.has(v) && (map[u].roads & dirBit(u, v)) && !onBlocked(map, u, v)) { if (v === to) return d + 1; seen.set(v, d + 1); q.push(v); } }
+  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; for (const v of nbrs(u)) if (!seen.has(v) && hasEdge(map, u, v, k) && !onBlocked(map, u, v)) { if (v === to) return d + 1; seen.set(v, d + 1); q.push(v); } }
   return Infinity;
 }
-function riverStepDist(map: Tile[], from: number, to: number): number {   // river-channel BFS distance (for boat cost)
-  if (from === to) return 0;
-  const seen = new Map<number, number>([[from, 0]]); const q = [from];
-  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; for (const v of nbrs(u)) if (!seen.has(v) && (map[u].rivers & dirBit(u, v)) && !onBlocked(map, u, v)) { if (v === to) return d + 1; seen.set(v, d + 1); q.push(v); } }
-  return Infinity;
-}
+const roadReach = (map: Tile[], from: number, s: number) => linkReach(map, from, s, 'roads');    // car
+const riverReach = (map: Tile[], from: number, s: number) => linkReach(map, from, s, 'rivers');  // boat (river channel)
+const roadStepDist = (map: Tile[], from: number, to: number) => linkDist(map, from, to, 'roads');
+const riverStepDist = (map: Tile[], from: number, to: number) => linkDist(map, from, to, 'rivers');
 // AP a legal target costs, for the UI. Foot/boat = the step cost; car = fractional (1 AP buys CAR_STEPS road tiles)
 export function targetAP(G: GState, pid: string, a: { move?: string; args?: unknown[] }): number {
   const p = G.players[pid];
@@ -93,18 +101,6 @@ function buildPool(t: Terrain, rand: () => number): Discovery[] {
 function prng(seed: number) { return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const ix = (r: number, c: number) => r * N + c;
 function nbrs(i: number): number[] { const r = (i / N) | 0, c = i % N, o: number[] = []; if (r > 0) o.push(i - N); if (r < N - 1) o.push(i + N); if (c > 0) o.push(i - 1); if (c < N - 1) o.push(i + 1); return o; }
-function roadReach(map: Tile[], from: number, maxSteps: number): number[] {   // car: road cells within maxSteps road edges
-  const seen = new Map<number, number>([[from, 0]]); const q = [from]; const out: number[] = [];
-  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; if (d >= maxSteps) continue;
-    for (const v of nbrs(u)) if (!seen.has(v) && (map[u].roads & dirBit(u, v)) && !onBlocked(map, u, v)) { seen.set(v, d + 1); out.push(v); q.push(v); } }
-  return out;
-}
-function riverReach(map: Tile[], from: number, maxSteps: number): number[] {   // boat: water tiles within maxSteps river-channel edges (link-based)
-  const seen = new Map<number, number>([[from, 0]]); const q = [from]; const out: number[] = [];
-  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; if (d >= maxSteps) continue;
-    for (const v of nbrs(u)) if (!seen.has(v) && (map[u].rivers & dirBit(u, v)) && !onBlocked(map, u, v)) { seen.set(v, d + 1); out.push(v); q.push(v); } }
-  return out;
-}
 function compMove(map: Tile[], nodes: number[]): number {            // components under the movement rule
   const set = new Set(nodes), seen = new Set<number>(); let c = 0;
   for (const s of nodes) { if (seen.has(s)) continue; c++; const st = [s]; seen.add(s); while (st.length) { const x = st.pop()!; for (const y of nbrs(x)) if (set.has(y) && !seen.has(y) && canMoveDry(map, x, y)) { seen.add(y); st.push(y); } } }
@@ -120,10 +116,11 @@ function compTerrain(map: Tile[], pred: (t: Tile) => boolean) {       // plain 4
 function genOnce(seed: number) {
   const rand = prng(seed), g: Tile[] = new Array(N * N).fill(null as any);
   const set = (i: number, t: Terrain, bridge?: Bridge) => { g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness: RICH[t], revealed: false, finds: [], equipment: [] }; };
-  const link = (a: number, b: number) => { g[a].roads |= dirBit(a, b); g[b].roads |= dirBit(b, a); };   // road edge
-  const linkP = (a: number, b: number) => { g[a].paths |= dirBit(a, b); g[b].paths |= dirBit(b, a); };  // foot edge
-  const linkS = (a: number, b: number) => { g[a].smallRivers |= dirBit(a, b); g[b].smallRivers |= dirBit(b, a); };  // brook edge (boat-only highway)
-  const block = (a: number, b: number) => { g[a].blocked |= dirBit(a, b); g[b].blocked |= dirBit(b, a); };          // cliff edge (uncrossable)
+  const join = (a: number, b: number, k: EdgeKind) => { g[a][k] |= dirBit(a, b); g[b][k] |= dirBit(b, a); };   // lay one edge of link kind `k` (symmetric)
+  const link = (a: number, b: number) => join(a, b, 'roads');         // road edge
+  const linkP = (a: number, b: number) => join(a, b, 'paths');        // foot edge
+  const linkS = (a: number, b: number) => join(a, b, 'smallRivers');  // brook edge (boat-only highway)
+  const block = (a: number, b: number) => join(a, b, 'blocked');      // cliff edge (uncrossable)
 
   // river: 4-connected vertical path; trunk kept in the central column band so the road bridge lands in the centre quadrant
   const wlo = Math.max(1, Math.ceil(N / 3)), whi = Math.min(N - 2, Math.floor(2 * N / 3));
@@ -229,7 +226,7 @@ function genOnce(seed: number) {
   }
 
   // RIVER LINKAGE: link adjacent water tiles into a channel (like roads); the unlinked water edges are the banks — gives the river an orientation
-  for (let i = 0; i < N * N; i++) if (g[i].terrain === 'water') for (const j of nbrs(i)) if (g[j].terrain === 'water') g[i].rivers |= dirBit(i, j);
+  for (let i = 0; i < N * N; i++) if (g[i].terrain === 'water') for (const j of nbrs(i)) if (g[j].terrain === 'water') join(i, j, 'rivers');
 
   return { g, bridges, base };
 }
@@ -290,18 +287,20 @@ const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   p.ap -= c; p.pos = t; reveal(G, t, random);
   G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' ⛵' : ''})`);
 };
-const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (road edges only)
-  const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
-  if (G.epilogue || p.ap < 1 || !car || !roadReach(G.map, car.pos, CAR_STEPS).includes(dest)) return INVALID_MOVE;
-  p.ap -= 1; p.pos = dest; car.pos = dest; reveal(G, dest, random);   // player + car travel together
-  G.log.push(`drive→${dest}`);
-};
-const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boating along the river channel: up to BOAT_STEPS tiles per AP (rivers linkage)
+// generic link-ride: travel up to `steps` tiles along link `k` for 1 AP. car→roads, boat→river channel — same code, different prerequisite.
+function ride(G: GState, ctx: any, random: any, dest: number, from: number, steps: number, k: EdgeKind, allowed: boolean, arrive: () => void, log: string) {
   const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || p.ap < 1 || !p.boat || !riverReach(G.map, p.pos, BOAT_STEPS).includes(dest)) return INVALID_MOVE;
-  const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;
-  p.ap -= 1; p.pos = dest; reveal(G, dest, random);
-  G.log.push(`P${ctx.currentPlayer} ⛵→ ${dest} (-1ap)`);
+  if (G.epilogue || p.ap < 1 || !allowed || !linkReach(G.map, from, steps, k).includes(dest)) return INVALID_MOVE;
+  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random);
+  G.log.push(log);
+}
+const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (player + car travel together)
+  const car = myVehicle(G, ctx.currentPlayer);
+  return ride(G, ctx, random, dest, car ? car.pos : -1, CAR_STEPS, 'roads', !!car, () => { if (car) car.pos = dest; }, `drive→${dest}`);
+};
+const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boat: up to BOAT_STEPS river-channel tiles per AP
+  const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
+  return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `P${ctx.currentPlayer} ⛵→ ${dest} (-1ap)`);
 };
 const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into a co-located, unoccupied car (free)
   const p = G.players[ctx.currentPlayer], car = G.vehicles[v];
