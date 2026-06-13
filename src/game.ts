@@ -128,13 +128,22 @@ function genOnce(seed: number) {
   let jr = Math.max(2, Math.min(N - 3, Math.round(cmid + (rand() * 2 - 1)))), jc = Math.max(2, Math.min(N - 3, Math.round(cmid + (rand() * 2 - 1))));
   addW(ix(jr, jc));
   const baseAng = rand() * Math.PI * 2;
+  const riverNbrs = (i: number, excl: number) => nbrs(i).filter(j => water.has(j) && j !== excl).length;   // river neighbours other than the predecessor
   for (let a = 0; a < 3; a++) {
     const ang = baseAng + a * (Math.PI * 2 / 3), tr = jr + Math.sin(ang) * N * 3, tc = jc + Math.cos(ang) * N * 3;   // far target in this direction
-    let r = jr, c = jc;
+    let r = jr, c = jc, prev = ix(jr, jc);
     for (let guard = 0; guard < N * 3; guard++) {
-      if (Math.abs(tr - r) >= Math.abs(tc - c)) r += Math.sign(tr - r); else c += Math.sign(tc - c);   // 4-connected step toward the target (zig-zags to approximate the angle)
-      if (r < 0 || r >= N || c < 0 || c >= N) break;
-      addW(ix(r, c));
+      const dr = Math.sign(tr - r), dc = Math.sign(tc - c);
+      const tries: [number, number][] = Math.abs(tr - r) >= Math.abs(tc - c) ? [[dr, 0], [0, dc]] : [[0, dc], [dr, 0]];
+      let ni = -1, nr = r, nc = c;
+      for (const [ddr, ddc] of tries) {                              // step toward the target, but only onto a cell that touches NO other river (keep a clean tree)
+        if (!ddr && !ddc) continue;
+        const r2 = r + ddr, c2 = c + ddc; if (r2 < 0 || r2 >= N || c2 < 0 || c2 >= N) continue;
+        const cand = ix(r2, c2); if (water.has(cand) || riverNbrs(cand, prev) > 0) continue;
+        ni = cand; nr = r2; nc = c2; break;
+      }
+      if (ni < 0) break;
+      addW(ni); prev = ni; r = nr; c = nc;
       if (r === 0 || r === N - 1 || c === 0 || c === N - 1) break;   // arm reached the boundary
     }
   }
