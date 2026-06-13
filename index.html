@@ -7,14 +7,14 @@
     <style>
       :root { color-scheme: dark; }
       body {
-        margin: 0; padding: .5rem 1.25rem 1.25rem;
+        margin: 0; padding: .3rem 1.25rem 1.25rem;
         background: #0b0f0a; color: #d6e4d0; border-top: 3px solid #c9962f;   /* amber = lean canvas viewer */
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
       h1 { font-size: .92rem; font-weight: 600; margin: 0; display: inline-block; }
       .badge { font-size: .56rem; text-transform: uppercase; letter-spacing: .08em; padding: .1rem .35rem; border-radius: 3px; vertical-align: middle; margin-left: .4rem; background: #3a2f12; color: #e3b765; border: 1px solid #6b5320; }
       .sub { color: #6f8f70; font-size: .72rem; margin: .15rem 0 .5rem; }
-      .controls { margin-bottom: .5rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+      .controls { margin-bottom: .35rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
       label.seat { font-size: .78rem; color: #9fc69a; display: inline-flex; gap: .3rem; align-items: center; }
       button {
         background: #16301a; color: #cfe9c8; border: 1px solid #2f5a34;
@@ -53,8 +53,7 @@
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
-    <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span></h1>
-    <div class="sub">serverless boardgame.io build — click to play, bots fill the empty seats · <a href="bgio.html" style="color:#7ad07a">bgio player frontend + Debug Inspector ↗</a></div>
+    <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span> <a href="bgio.html" style="font-size:.62rem;font-weight:400;color:#7ad07a">bgio + Debug Inspector ↗</a></h1>
     <div class="controls">
       <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
       <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
