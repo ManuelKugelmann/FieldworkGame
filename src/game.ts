@@ -129,23 +129,33 @@ function genOnce(seed: number) {
   addW(ix(jr, jc));
   const baseAng = rand() * Math.PI * 2;
   const riverNbrs = (i: number, excl: number) => nbrs(i).filter(j => water.has(j) && j !== excl).length;   // river neighbours other than the predecessor
-  for (let a = 0; a < 3; a++) {
-    const ang = baseAng + a * (Math.PI * 2 / 3), tr = jr + Math.sin(ang) * N * 3, tc = jc + Math.cos(ang) * N * 3;   // far target in this direction
-    let r = jr, c = jc, prev = ix(jr, jc);
-    for (let guard = 0; guard < N * 3; guard++) {
-      const dr = Math.sign(tr - r), dc = Math.sign(tc - c);
-      const tries: [number, number][] = Math.abs(tr - r) >= Math.abs(tc - c) ? [[dr, 0], [0, dc]] : [[0, dc], [dr, 0]];
-      let ni = -1, nr = r, nc = c;
-      for (const [ddr, ddc] of tries) {                              // step toward the target, but only onto a cell that touches NO other river (keep a clean tree)
-        if (!ddr && !ddc) continue;
-        const r2 = r + ddr, c2 = c + ddc; if (r2 < 0 || r2 >= N || c2 < 0 || c2 >= N) continue;
-        const cand = ix(r2, c2); if (water.has(cand) || riverNbrs(cand, prev) > 0) continue;
-        ni = cand; nr = r2; nc = c2; break;
+  const perp = (d: [number, number]): [number, number][] => d[0] === 0 ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]];   // the two 90° turns of a direction
+  const CARD: [number, number][] = [[-1, 0], [1, 0], [0, 1], [0, -1]];   // N,S,E,W
+  const used = [false, false, false, false], armDirs: [number, number][] = [];
+  for (let a = 0; a < 3; a++) {                                    // 3 DISTINCT launch directions → exactly one 3-way split (no fixed Y shape)
+    const ang = baseAng + a * (Math.PI * 2 / 3), sr = Math.sin(ang), sc = Math.cos(ang);
+    let k = Math.abs(sr) >= Math.abs(sc) ? (sr < 0 ? 0 : 1) : (sc >= 0 ? 2 : 3);
+    if (used[k]) k = used.findIndex(u => !u);
+    used[k] = true; armDirs.push(CARD[k]);
+  }
+  // place all 3 launch cells FIRST (the junction is the only 3-way tile), then grow the arms in ALTERNATION (round-robin), each meandering 50:50 straight / 90° turn
+  const arms = armDirs.map(dir0 => { const fr = jr + dir0[0], fc = jc + dir0[1]; addW(ix(fr, fc)); return { r: fr, c: fc, prev: ix(fr, fc), dir: dir0, active: true }; });
+  for (let round = 0; round < N * 4; round++) {
+    let any = false;
+    for (const arm of arms) {
+      if (!arm.active) continue;
+      if (arm.r === 0 || arm.r === N - 1 || arm.c === 0 || arm.c === N - 1) { arm.active = false; continue; }   // reached the boundary
+      let chosen = arm.dir;
+      if (rand() < 0.5) { const ps = perp(arm.dir); chosen = ps[Math.floor(rand() * 2)]; }
+      let moved = false;
+      for (const d of [chosen, arm.dir, ...perp(arm.dir)]) {
+        const nr = arm.r + d[0], nc = arm.c + d[1]; if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
+        const cand = ix(nr, nc); if (water.has(cand) || riverNbrs(cand, arm.prev) > 0) continue;
+        addW(cand); arm.prev = cand; arm.r = nr; arm.c = nc; arm.dir = d; moved = true; any = true; break;
       }
-      if (ni < 0) break;
-      addW(ni); prev = ni; r = nr; c = nc;
-      if (r === 0 || r === N - 1 || c === 0 || c === N - 1) break;   // arm reached the boundary
+      if (!moved) arm.active = false;
     }
+    if (!any) break;
   }
 
   // (brooks are land-cell edge overlays now — laid after the land flood, near the footpaths)
@@ -172,7 +182,22 @@ function genOnce(seed: number) {
   }
   const roadCells = () => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (g[i] && g[i].roads !== 0 && !g[i].bridge) a.push(i); return a; };
   const branchN = 3 + Math.round((N - 10) / 3);   // a few road branches grown outward from the centre
-  for (let b = 0; b < branchN; b++) { const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)]; const len = 3 + Math.floor(rand() * 3); for (let s = 0; s < len; s++) { const opts = nbrs(i).filter(j => !g[j]); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; set(j, roadBase()); link(i, j); i = j; } }
+  for (let b = 0; b < branchN; b++) {
+    const rc = roadCells(); if (!rc.length) break; let i = rc[Math.floor(rand() * rc.length)];
+    const init = nbrs(i).filter(j => !g[j]); if (!init.length) continue;
+    const j0 = init[Math.floor(rand() * init.length)]; let dir: [number, number] = [((j0 / N) | 0) - ((i / N) | 0), (j0 % N) - (i % N)];
+    const len = 3 + Math.floor(rand() * 3);
+    for (let s = 0; s < len; s++) {
+      let chosen = dir; if (rand() < 0.5) { const ps = perp(dir); chosen = ps[Math.floor(rand() * 2)]; }   // 50:50 straight vs 90° turn
+      let moved = false;
+      for (const d of [chosen, dir, ...perp(dir)]) {
+        const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; if (r < 0 || r >= N || c < 0 || c >= N) continue;
+        const j = ix(r, c); if (g[j]) continue;
+        set(j, roadBase()); link(i, j); i = j; dir = d; moved = true; break;
+      }
+      if (!moved) break;
+    }
+  }
 
   // flood jungle, carve rocky + grassland patches (all passable land; rocky/jungle = 2 AP bushwhack)
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'jungle');
