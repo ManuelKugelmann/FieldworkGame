@@ -172,7 +172,6 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     if (!t.bridge && (t.terrain === 'wild' || t.terrain === 'forest' || t.terrain === 'rocky')) {   // global move-cost: 2-AP bushwhack tiles read darker than 1-AP grassland/road/water
       cctx.fillStyle = 'rgba(0,0,0,0.17)'; cctx.fillRect(x, y, CELL, CELL);
     }
-    if (!t.revealed) { cctx.fillStyle = 'rgba(5,8,5,0.55)'; cctx.fillRect(x, y, CELL, CELL); }
     cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.setLineDash([]);
     cctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
   }
@@ -203,9 +202,12 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = '#e8f0e2'; cctx.font = `bold ${CELL * 0.32}px ui-monospace, monospace`;
       cctx.fillText(HOTSPOT_LABEL[t.hotspot], x + CELL / 2, y + CELL / 2 + 1);
     }
-    if (t.revealed && t.finds.length) for (let k = 0; k < t.finds.length; k++) {
-      cctx.fillStyle = DTYPE_COLOR[t.finds[k].type];
-      cctx.beginPath(); cctx.arc(x + 7 + k * 8, y + CELL - 7, 3, 0, 7); cctx.fill();
+    if (t.terrain !== 'void') {   // discovery slots: explored = coloured finds; unexplored = gray potential dots (richness)
+      const n = t.revealed ? t.finds.length : t.richness;
+      for (let k = 0; k < n; k++) {
+        cctx.fillStyle = t.revealed ? DTYPE_COLOR[t.finds[k].type] : 'rgba(206,210,205,0.5)';
+        cctx.beginPath(); cctx.arc(x + 7 + k * 8, y + CELL - 7, 3, 0, 7); cctx.fill();
+      }
     }
     let gk = 0;                                      // item caches: gear = squares (top-left), boat = ⛵ (bottom-left)
     for (const e of t.equipment) {

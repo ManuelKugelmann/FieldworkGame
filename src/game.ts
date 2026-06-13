@@ -21,7 +21,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 15, ACTIVE_TILES = 110, START_AP = 4,  // fixed 15×15 footprint, ~110 tiles kept active (rest void) → consistent size + spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, HELILIFT_COST = 12;  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
+  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12;  // FIND_CHANCE: each potential slot (gray dot) yields a discovery on reveal, else empty  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
 const RICH: Record<Terrain, number> = { grassland: 1, wild: 3, forest: 2, rocky: 3, water: 0, void: 0 };  // rocky = geology-rich; grassland = sparse
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
@@ -271,7 +271,7 @@ function reveal(G: GState, t: number, random: any) {
   const tile = G.map[t]; if (tile.revealed) return;
   tile.revealed = true;
   const pool = G.pools[tile.terrain]; if (!pool) return;
-  for (let k = 0; k < tile.richness && pool.length; k++) tile.finds.push(pool.splice(random.Die(pool.length) - 1, 1)[0]);
+  for (let k = 0; k < tile.richness && pool.length; k++) if (random.Number() < FIND_CHANCE) tile.finds.push(pool.splice(random.Die(pool.length) - 1, 1)[0]);   // each potential slot resolves to a find or comes up empty
   G.log.push(`reveal ${t} (${tile.terrain}): ${tile.finds.length}`);
 }
 
