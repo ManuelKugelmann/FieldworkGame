@@ -60,25 +60,41 @@ const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H',
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
+// the active (non-void) bounding box — the canvas is cropped to this so the void margins
+// around the blob aren't drawn as empty space above/below/beside the board
+export function activeBounds(G: GState) {
+  let minR = G.rows, maxR = -1, minC = G.cols, maxC = -1;
+  for (let i = 0; i < G.map.length; i++) {
+    if (G.map[i].terrain === 'void') continue;
+    const r = (i / G.cols) | 0, c = i % G.cols;
+    if (r < minR) minR = r; if (r > maxR) maxR = r;
+    if (c < minC) minC = c; if (c > maxC) maxC = c;
+  }
+  if (maxR < 0) { minR = 0; maxR = G.rows - 1; minC = 0; maxC = G.cols - 1; }   // all-void fallback (shouldn't happen)
+  return { minR, minC, rows: maxR - minR + 1, cols: maxC - minC + 1 };
+}
+
 export function fitCanvas(canvas: HTMLCanvasElement, G: GState): CanvasRenderingContext2D {
   // size a square tile to fill the board's container width and the remaining viewport height
+  const b = activeBounds(G);
   const wrap = canvas.parentElement;
   const availW = (wrap ? wrap.clientWidth : window.innerWidth) || window.innerWidth;
   const top = canvas.getBoundingClientRect().top;          // stable: set by the chrome above, not by the canvas's own height
   const availH = window.innerHeight - top - 104;           // leave room for the legend + bottom padding so the board doesn't force a vertical scroll
-  CELL = Math.max(MIN_CELL, Math.floor(Math.min(availW / G.cols, availH / G.rows)));
+  CELL = Math.max(MIN_CELL, Math.floor(Math.min(availW / b.cols, availH / b.rows)));
   const d = dpr();
-  canvas.style.width = `${G.cols * CELL}px`;
-  canvas.style.height = `${G.rows * CELL}px`;
-  canvas.width = G.cols * CELL * d;
-  canvas.height = G.rows * CELL * d;
+  canvas.style.width = `${b.cols * CELL}px`;
+  canvas.style.height = `${b.rows * CELL}px`;
+  canvas.width = b.cols * CELL * d;
+  canvas.height = b.rows * CELL * d;
   const cctx = canvas.getContext('2d')!;
-  cctx.setTransform(d, 0, 0, d, 0, 0);
+  cctx.setTransform(d, 0, 0, d, -b.minC * CELL * d, -b.minR * CELL * d);   // shift so the bounding box's top-left is the canvas origin
   return cctx;
 }
 
 export const tileAt = (px: number, py: number, G: GState): number => {
-  const c = Math.floor(px / CELL), r = Math.floor(py / CELL);
+  const b = activeBounds(G);
+  const c = Math.floor(px / CELL) + b.minC, r = Math.floor(py / CELL) + b.minR;   // CSS px are relative to the cropped (bbox) top-left
   if (c < 0 || r < 0 || c >= G.cols || r >= G.rows) return -1;
   return r * G.cols + c;
 };
