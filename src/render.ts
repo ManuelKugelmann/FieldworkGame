@@ -155,11 +155,11 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null) {
   const fs = CELL * 0.4;
-  cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'left'; cctx.textBaseline = 'top';
-  cctx.globalAlpha = driver ? 1 : 0.5;                  // empty car dimmer
-  cctx.fillText('🚗', x + CELL - fs - 1, y + 1);
+  cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'bottom';
+  cctx.globalAlpha = driver ? 1 : 0.55;                 // empty car dimmer
+  cctx.fillText('🚗', x + CELL / 2, y + CELL - 1);       // centre-bottom
   cctx.globalAlpha = 1;
-  if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL - 3.5, y + 3.5, 3, 0, 7); cctx.fill(); cctx.stroke(); }
+  if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL / 2 + fs * 0.5, y + CELL - fs * 0.75, 2.6, 0, 7); cctx.fill(); cctx.stroke(); }
   cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
 }
 
@@ -210,27 +210,21 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = '#e8f0e2'; cctx.font = `bold ${CELL * 0.32}px ui-monospace, monospace`;
       cctx.fillText(HOTSPOT_LABEL[t.hotspot], x + CELL / 2, y + CELL / 2 + 1);
     }
-    if (t.terrain !== 'void') {   // discovery slots at the corners (triangle for 3): explored = coloured finds, unexplored = grayish-biome potential dots
-      const n = t.revealed ? t.finds.length : t.richness;
-      const d = Math.max(6, CELL * 0.17), rr = Math.max(2.5, CELL * 0.075);
-      const corners = [[x + d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d], [x + CELL - d, y + d]];   // TL, BL, BR, TR (TR used last → clear of the car glyph)
-      for (let k = 0; k < n && k < 4; k++) {
-        cctx.fillStyle = t.revealed ? DTYPE_COLOR[t.finds[k].type] : GRAY_BIOME[t.terrain];
-        cctx.beginPath(); cctx.arc(corners[k][0], corners[k][1], rr, 0, 7); cctx.fill();
-      }
+    if (t.terrain === 'void') continue;
+    // 8 perimeter slots (4 corners + 4 edge midpoints): discovery dots first, then cached gear/boat
+    const d = Math.max(6, CELL * 0.17), m = CELL / 2, rr = Math.max(2.5, CELL * 0.075);
+    const slots = [[x + d, y + d], [x + CELL - d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d], [x + m, y + d], [x + d, y + m], [x + CELL - d, y + m], [x + m, y + CELL - d]];   // corners, then T/L/R, bottom-centre last (kept clear for the car)
+    let s = 0;
+    const n = t.revealed ? t.finds.length : t.richness;
+    for (let k = 0; k < n && s < 8; k++, s++) {   // discovery dots: coloured (explored) / grayish-biome (potential)
+      cctx.fillStyle = t.revealed ? DTYPE_COLOR[t.finds[k].type] : GRAY_BIOME[t.terrain];
+      cctx.beginPath(); cctx.arc(slots[s][0], slots[s][1], rr, 0, 7); cctx.fill();
     }
-    let gk = 0;                                      // item caches: gear = squares (top-left), boat = ⛵ (bottom-left)
-    for (const e of t.equipment) {
-      if (e.kind === 'boat') {
-        const fs = CELL * 0.32;
-        cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'left'; cctx.textBaseline = 'bottom';
-        cctx.fillText('⛵', x + 2, y + CELL - 1);
-        cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
-      } else {
-        const ex = x + 4 + gk * 8, ey = y + 5; gk++;
-        cctx.fillStyle = EQUIP_COLOR; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1;
-        cctx.fillRect(ex, ey, 5, 5); cctx.strokeRect(ex, ey, 5, 5);
-      }
+    for (const e of t.equipment) {   // cached items take the next free slots
+      if (s >= 8) break;
+      const sx = slots[s][0], sy = slots[s][1]; s++;
+      if (e.kind === 'boat') { cctx.font = `${CELL * 0.34}px ${EMOJI_FONT}`; cctx.fillText('⛵', sx, sy); }
+      else { const sq = rr * 1.9; cctx.fillStyle = EQUIP_COLOR; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.fillRect(sx - sq / 2, sy - sq / 2, sq, sq); cctx.strokeRect(sx - sq / 2, sy - sq / 2, sq, sq); }
     }
   }
 
