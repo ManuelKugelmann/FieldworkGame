@@ -208,11 +208,12 @@ function genOnce(seed: number) {
   for (const [i, d] of bdist) if (g[i].roads !== 0 && !g[i].bridge) { const s = Math.abs(d - 3); if (s < bestS) { bestS = s; base = i; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
-  // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + some road trailheads; trails fizzle out anywhere
+  // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + road JUNCTIONS + hotspots; trails fizzle out anywhere
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
   for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water' && g[j].terrain !== 'void' && !(g[fb].blocked & dirBit(fb, j))) linkP(fb, j);
-  const roadAll: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].roads !== 0) roadAll.push(i);
-  const seeds = [...footBr]; for (let k = 0; k < 4 && roadAll.length; k++) seeds.push(roadAll[Math.floor(rand() * roadAll.length)]);   // more road trailheads
+  const popc = (b: number) => (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1);
+  const seeds = [...footBr];
+  for (let i = 0; i < N * N; i++) if (popc(g[i].roads) >= 3 && !g[i].bridge) seeds.push(i);   // trails branch off road junctions (≥3 road edges)
   for (const hs of ['base', 'village', 'remote'] as const) { const i = g.findIndex(t => t && t.hotspot === hs); if (i >= 0) seeds.push(i); }   // trails also leave the base, market & remote
   for (const sd of seeds) {
     const o0 = nbrs(sd).filter(j => g[j].terrain === 'jungle' && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
