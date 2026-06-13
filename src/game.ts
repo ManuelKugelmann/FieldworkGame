@@ -425,27 +425,37 @@ const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // re
 
 // ---- research set-patterns. assemble() uses owned samples first, cites others' published pools for any shortfall ----
 const PATTERNS = [
-  { name: 'triple', prestige: 4, money: 2 },   // 3 of one discipline
-  { name: 'rainbow', prestige: 7, money: 3 },  // 1 of each of the 4 disciplines
+  { name: 'triple', prestige: 2, money: 1 },   // 3 sharing one value on either axis (discipline or colour)
+  { name: 'rainbow', prestige: 4, money: 2 },  // one of each of the 4 values on either axis
 ];
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
+// discoveries vary on TWO independent axes: discipline (type) and colour. A set may form on EITHER axis.
+type Axis = (d: Discovery) => DType | number;
+const AXES: Axis[] = [d => d.type, d => d.color];
+const AXIS_VALS: (DType | number)[][] = [DTYPES, Array.from({ length: COLORS }, (_, i) => i)];
 function assemble(name: string, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
-  if (name === 'triple') {
-    let best: { ownedIdx: number[]; cited: number } | null = null;
-    for (const T of DTYPES) {
-      const oIdx: number[] = []; owned.forEach((d, i) => { if (d.type === T) oIdx.push(i); });
-      const cAvail = citable.filter(d => d.type === T).length;
-      if (oIdx.length + cAvail >= 3) { const useOwned = Math.min(3, oIdx.length); const cand = { ownedIdx: oIdx.slice(0, useOwned), cited: 3 - useOwned }; if (!best || cand.cited < best.cited) best = cand; }
-    }
-    return best && best.cited <= MAX_CITE ? best : null;   // own all but MAX_CITE
+  let best: { ownedIdx: number[]; cited: number } | null = null;
+  const take = (cand: { ownedIdx: number[]; cited: number } | null) => { if (cand && cand.cited <= MAX_CITE && (!best || cand.cited < best.cited)) best = cand; };
+  if (name === 'triple') {                                            // 3 sharing one value on EITHER axis (same discipline OR same colour)
+    AXES.forEach((ax, a) => {
+      for (const V of AXIS_VALS[a]) {
+        const oIdx: number[] = []; owned.forEach((d, i) => { if (ax(d) === V) oIdx.push(i); });
+        const cAvail = citable.filter(d => ax(d) === V).length;
+        if (oIdx.length + cAvail >= 3) { const useOwned = Math.min(3, oIdx.length); take({ ownedIdx: oIdx.slice(0, useOwned), cited: 3 - useOwned }); }
+      }
+    });
+    return best;   // own all but MAX_CITE
   }
-  if (name === 'rainbow') {
-    const ownedIdx: number[] = [], used = new Set<number>(); let cited = 0;
-    for (const T of DTYPES) {
-      let oi = -1; for (let i = 0; i < owned.length; i++) if (owned[i].type === T && !used.has(i)) { oi = i; break; }
-      if (oi >= 0) { ownedIdx.push(oi); used.add(oi); } else if (citable.some(d => d.type === T)) cited++; else return null;
-    }
-    return cited <= MAX_CITE ? { ownedIdx, cited } : null;   // own all but MAX_CITE
+  if (name === 'rainbow') {                                           // one of EACH of the 4 values on EITHER axis (every discipline OR every colour)
+    AXES.forEach((ax, a) => {
+      const ownedIdx: number[] = [], used = new Set<number>(); let cited = 0, ok = true;
+      for (const V of AXIS_VALS[a]) {
+        let oi = -1; for (let i = 0; i < owned.length; i++) if (ax(owned[i]) === V && !used.has(i)) { oi = i; break; }
+        if (oi >= 0) { ownedIdx.push(oi); used.add(oi); } else if (citable.some(d => ax(d) === V)) cited++; else { ok = false; break; }
+      }
+      if (ok) take({ ownedIdx, cited });
+    });
+    return best;   // own all but MAX_CITE
   }
   return null;
 }

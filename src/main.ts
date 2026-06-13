@@ -4,7 +4,7 @@ import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
   actionLabel, describeTile, sampleChips, logToasts, prettyLog, publishPreviews,
-  DTYPE_SYMBOL, type Action, type Toast,
+  type Action, type Toast,
 } from './render';
 
 // ---- Canvas viewer + click-to-play. The bgio headless Client is the engine;
@@ -98,7 +98,9 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap}AP · 🌧${G.monsoon}/4`;
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
-    const cells = pat.cells.map(c => `<span class="cell ${c.state}">${DTYPE_SYMBOL[c.type]}</span>`).join('');
+    const cells = pat.cells.map(c => c.swatch
+      ? `<span class="cell ${c.state}"><span class="sw" style="background:${c.swatch}"></span></span>`
+      : `<span class="cell ${c.state}">${c.icon}</span>`).join('');
     return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.name}</span>` +
       `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${pat.ready ? ' ✓' : ''}</span>`;
   }).join('');
