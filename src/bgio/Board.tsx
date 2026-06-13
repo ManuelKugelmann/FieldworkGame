@@ -84,16 +84,10 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
       <div className="toasts">
         {toasts.map(({ id, t }) => <div key={id} className={`toast ${t.kind}`}>{t.text}</div>)}
       </div>
-      <h1>Expedition: Verdant Prime <span className="badge">bgio · Debug Inspector →</span></h1>
       <div className="controls">
-        <button onClick={() => reset()}>New match</button>
-        <button
-          disabled={!myTurn}
-          onClick={() => dispatch(botAction(G, ctx, Math.random) as Action)}
-        >Bot: suggest move</button>
-        <span style={{ fontSize: '.72rem', color: '#6f8f70' }}>
-          seat P{seat}{playerID == null ? ' · hot-seat' : ''}
-        </span>
+        <button onClick={() => reset()}>New</button>
+        <button disabled={!myTurn} onClick={() => dispatch(botAction(G, ctx, Math.random) as Action)}>Suggest</button>
+        <span className="turnline">{ctx.gameover ? `game over — winner P${ctx.gameover.winner}` : `${G.epilogue ? 'lab' : `turn ${ctx.turn}`} · P${ctx.currentPlayer}${seat === ctx.currentPlayer ? ' (you)' : ''} · ${cur.ap} AP · 🌧 ${G.monsoon}/4`}</span>
       </div>
       <div className="cols">
         <div className="boardwrap">
@@ -112,22 +106,10 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
               if (a) dispatch(a);
             }}
           />
-          <div className="panel actions-mobile">
-            <h2>Your actions</h2>
-            <div className="bar">{actionsContent}</div>
-          </div>
-          <div className="panel inspectwrap">
-            <h2>Inspect</h2>
-            <div id="inspect" dangerouslySetInnerHTML={{ __html: hover < 0 ? 'hover a tile' : describeTile(G, hover) }} />
-          </div>
+          <div className="bar actions-board">{actionsContent}</div>
+          {hover >= 0 && <div className="inspectline" dangerouslySetInnerHTML={{ __html: describeTile(G, hover) }} />}
         </div>
         <div className="side">
-          <div className="status">
-            {ctx.gameover
-              ? `game over — winner P${ctx.gameover.winner}`
-              : `${G.epilogue ? 'lab season' : `field turn ${ctx.turn}`} · Turn: P${ctx.currentPlayer} · ${cur.ap} AP · 🌧 ${G.monsoon}/4`}
-          </div>
-
           <div className="panel">
             <h2>Players</h2>
             {Object.entries(G.players).map(([id, p]) => {
@@ -135,25 +117,10 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
               const driving = G.vehicles.some((v) => v.driver === id);
               return (
                 <div key={id} className={id === ctx.currentPlayer ? 'pcard cur' : 'pcard'}>
-                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>
-                  {driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} {vp} pts · {p.prestige} prestige · gear {p.gear}
-                  <div className="pool">money pool: {p.money}$</div>
-                  <div className="pool">
-                    inventory: <span dangerouslySetInnerHTML={{ __html: sampleChips(p.samples) }} />
-                  </div>
-                  <div className="pool">
-                    published: {p.published.length
-                      ? <span dangerouslySetInnerHTML={{ __html: sampleChips(p.published) }} />
-                      : <span style={{ opacity: 0.5 }}>none</span>}
-                  </div>
+                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>{driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} · {vp}pts · {p.prestige}P · {p.money}$ · g{p.gear} · <span dangerouslySetInnerHTML={{ __html: sampleChips(p.samples) }} /> · pub {p.published.length}
                 </div>
               );
             })}
-          </div>
-
-          <div className="panel actions-desktop">
-            <h2>Your actions</h2>
-            <div className="bar">{actionsContent}</div>
           </div>
 
           <div className="panel">
