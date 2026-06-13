@@ -46,7 +46,6 @@ const TERRAIN_FILL: Record<Tile['terrain'], string> = {
 };
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
-const BRIDGE_FILL = '#7a6a44';
 const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R' };
 
@@ -167,7 +166,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
     if (t.terrain === 'void') continue;   // off-board cell → leave as background for a ragged edge
-    cctx.fillStyle = t.bridge ? BRIDGE_FILL : TERRAIN_FILL[t.terrain];
+    cctx.fillStyle = TERRAIN_FILL[t.terrain];   // bridges are water tiles — their road/trail link is drawn on top (section 2)
     cctx.fillRect(x, y, CELL, CELL);
     if (!t.bridge && (t.terrain === 'wild' || t.terrain === 'forest' || t.terrain === 'rocky')) {   // global move-cost: 2-AP bushwhack tiles read darker than 1-AP grassland/road/water
       cctx.fillStyle = 'rgba(0,0,0,0.17)'; cctx.fillRect(x, y, CELL, CELL);
