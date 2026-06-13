@@ -145,10 +145,10 @@ function genOnce(seed: number) {
     const arm = live[Math.floor(rand() * live.length)];          // extend a RANDOMLY chosen arm each step
     if (arm.r === 0 || arm.r === N - 1 || arm.c === 0 || arm.c === N - 1) { arm.active = false; continue; }   // reached the boundary
     let chosen = arm.dir;
-    if (rand() < 0.3) {                                          // 30% turn / 70% straight, the turn gently biased outward (toward the launch direction)
+    if (rand() < 0.5) {                                          // balanced 50:50 turn/straight; the turn only MILDLY biased outward
       const ps = perp(arm.dir);
       const out = (ps[0][0] * arm.dir0[0] + ps[0][1] * arm.dir0[1]) >= (ps[1][0] * arm.dir0[0] + ps[1][1] * arm.dir0[1]) ? ps[0] : ps[1];
-      chosen = rand() < 0.7 ? out : ps[Math.floor(rand() * 2)];
+      chosen = rand() < 0.3 ? out : ps[Math.floor(rand() * 2)];
     }
     let moved = false;
     for (const d of [chosen, arm.dir, ...perp(arm.dir)]) {
@@ -190,7 +190,7 @@ function genOnce(seed: number) {
     const j0 = init[Math.floor(rand() * init.length)]; let dir: [number, number] = [((j0 / N) | 0) - ((i / N) | 0), (j0 % N) - (i % N)];
     const len = 3 + Math.floor(rand() * 3);
     for (let s = 0; s < len; s++) {
-      let chosen = dir; if (rand() < 0.3) { const ps = perp(dir); chosen = ps[Math.floor(rand() * 2)]; }   // 30% turn / 70% straight
+      let chosen = dir; if (rand() < 0.5) { const ps = perp(dir); chosen = ps[Math.floor(rand() * 2)]; }   // balanced 50:50 turn/straight
       let moved = false;
       for (const d of [chosen, dir, ...perp(dir)]) {
         const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; if (r < 0 || r >= N || c < 0 || c >= N) continue;
