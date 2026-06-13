@@ -39,7 +39,8 @@ export function logToasts(fromIdx: number, log: string[]): Toast[] {
 export let CELL = 46;              // CSS px per tile — recomputed responsively in fitCanvas()
 export const MIN_CELL = 16;        // floor so the board stays usable on tiny viewports
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
-export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#d8b15a', zoo: '#e07a6a', bot: '#7ad07a', arch: '#9a8ad0' };
+export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff6f5c', bot: '#57e466', arch: '#bb9cff' };   // brighter, stronger discovery colours
+export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: 'G', zoo: 'Z', bot: 'B', arch: 'A' };   // type glyph stamped on an explored discovery
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#5d6e3a', jungle: '#2c4a20', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
@@ -231,9 +232,19 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     const slots = [[x + d, y + d], [x + CELL - d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d], [x + m, y + d], [x + d, y + m], [x + CELL - d, y + m], [x + m, y + CELL - d]];   // corners, then T/L/R, bottom-centre last (kept clear for the car)
     let s = 0;
     const n = t.revealed ? t.finds.length : t.richness;
-    for (let k = 0; k < n && s < 8; k++, s++) {   // discovery dots: coloured (explored) / grayish-biome (potential)
-      cctx.fillStyle = t.revealed ? DTYPE_COLOR[t.finds[k].type] : GRAY_BIOME[t.terrain];
-      cctx.beginPath(); cctx.arc(slots[s][0], slots[s][1], rr, 0, 7); cctx.fill();
+    const rrBig = Math.max(4, CELL * 0.13);   // explored discoveries drawn larger so the bright colour + type glyph read clearly
+    for (let k = 0; k < n && s < 8; k++, s++) {   // discovery dots: bright + type-stamped (explored) / grayish-biome (potential)
+      const sx = slots[s][0], sy = slots[s][1];
+      if (t.revealed) {
+        const ty = t.finds[k].type;
+        cctx.fillStyle = DTYPE_COLOR[ty];
+        cctx.beginPath(); cctx.arc(sx, sy, rrBig, 0, 7); cctx.fill();
+        cctx.lineWidth = 1; cctx.strokeStyle = 'rgba(0,0,0,0.55)'; cctx.stroke();   // dark rim for contrast on any terrain
+        if (CELL >= 22) { cctx.fillStyle = '#0b0f0a'; cctx.font = `bold ${Math.max(7, rrBig * 1.5)}px ui-monospace, monospace`; cctx.fillText(DTYPE_SYMBOL[ty], sx, sy + 0.5); }   // type symbol on the dot
+      } else {
+        cctx.fillStyle = GRAY_BIOME[t.terrain];
+        cctx.beginPath(); cctx.arc(sx, sy, rr, 0, 7); cctx.fill();
+      }
     }
     for (const e of t.equipment) {   // cached items take the next free slots
       if (s >= 8) break;
