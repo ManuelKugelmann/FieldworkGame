@@ -23,7 +23,7 @@ let N = 10;                  // grid dimension (square), chosen per-match in [10
 const DIM_MIN = 10, DIM_MAX = 15, ACTIVE_TILES = 110, START_AP = 4,  // fixed 15×15 footprint, ~110 tiles kept active (rest void) → consistent size + spread  // 4 AP/round
   COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12;  // FIND_CHANCE: each potential slot (gray dot) yields a discovery on reveal, else empty  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
-const RICH: Record<Terrain, [number, number]> = { grassland: [0, 2], jungle: [2, 4], rocky: [2, 4], water: [0, 0], void: [0, 0] };  // [min,max] potential tokens — rolled per tile
+const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 4, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
 const grass = (map: Tile[], a: number, b: number) => map[a].terrain === 'grassland' || map[b].terrain === 'grassland';  // grassland = fast going (path-like)
@@ -114,7 +114,7 @@ function compTerrain(map: Tile[], pred: (t: Tile) => boolean) {       // plain 4
 
 function genOnce(seed: number) {
   const rand = prng(seed), g: Tile[] = new Array(N * N).fill(null as any);
-  const set = (i: number, t: Terrain, bridge?: Bridge) => { const [lo, hi] = RICH[t]; g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness: lo + Math.floor(rand() * (hi - lo + 1)), revealed: false, finds: [], equipment: [] }; };
+  const set = (i: number, t: Terrain, bridge?: Bridge) => { const max = RICH[t]; g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness: Math.floor((max + 1) * rand() ** 2.5), revealed: false, finds: [], equipment: [] }; };  // 0..max, skewed toward 0–1
   const join = (a: number, b: number, k: EdgeKind) => { g[a][k] |= dirBit(a, b); g[b][k] |= dirBit(b, a); };   // lay one edge of link kind `k` (symmetric)
   const link = (a: number, b: number) => join(a, b, 'roads');         // road edge
   const linkP = (a: number, b: number) => join(a, b, 'paths');        // foot edge
