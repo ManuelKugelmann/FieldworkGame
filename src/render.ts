@@ -210,11 +210,13 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = '#e8f0e2'; cctx.font = `bold ${CELL * 0.32}px ui-monospace, monospace`;
       cctx.fillText(HOTSPOT_LABEL[t.hotspot], x + CELL / 2, y + CELL / 2 + 1);
     }
-    if (t.terrain !== 'void') {   // discovery slots: explored = coloured finds; unexplored = gray potential dots (richness)
+    if (t.terrain !== 'void') {   // discovery slots at the corners (triangle for 3): explored = coloured finds, unexplored = grayish-biome potential dots
       const n = t.revealed ? t.finds.length : t.richness;
-      for (let k = 0; k < n; k++) {
+      const d = Math.max(6, CELL * 0.17), rr = Math.max(2.5, CELL * 0.075);
+      const corners = [[x + d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d], [x + CELL - d, y + d]];   // TL, BL, BR, TR (TR used last → clear of the car glyph)
+      for (let k = 0; k < n && k < 4; k++) {
         cctx.fillStyle = t.revealed ? DTYPE_COLOR[t.finds[k].type] : GRAY_BIOME[t.terrain];
-        cctx.beginPath(); cctx.arc(x + 7 + k * 8, y + CELL - 7, 3, 0, 7); cctx.fill();
+        cctx.beginPath(); cctx.arc(corners[k][0], corners[k][1], rr, 0, 7); cctx.fill();
       }
     }
     let gk = 0;                                      // item caches: gear = squares (top-left), boat = ⛵ (bottom-left)
