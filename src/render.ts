@@ -144,8 +144,7 @@ export function describeTile(G: GState, i: number): string {
   const gearN = t.equipment.filter(e => e.kind === 'gear').length;
   if (gearN) bits.push(`${gearN} gear cached`);
   if (t.equipment.some(e => e.kind === 'boat')) bits.push('boat here');
-  if (!t.revealed) bits.push('unexplored');
-  else if (t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
+  if (t.revealed && t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
   return bits.join(' · ');
 }
 
