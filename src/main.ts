@@ -121,7 +121,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   else {
     const tile = G.map[cur.pos];
     // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
-    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile) })).filter((x): x is { a: Action; label: string } => x.label !== null);
+    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile, G.goals) })).filter((x): x is { a: Action; label: string } => x.label !== null);
     const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6 };
     const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
     const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';

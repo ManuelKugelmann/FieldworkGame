@@ -16,6 +16,7 @@ export interface GState {
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
   vehicles: Vehicle[];                                     // shared cars on the board (start at base)
   pools: Partial<Record<Terrain, Discovery[]>>;
+  goals: Pattern[];                                        // this match's active publish goals (8 of 10 variants)
   events: string[]; monsoon: number; epilogue: boolean; labLeft: number; log: string[];   // epilogue = indoor lab season
 }
 
@@ -425,40 +426,49 @@ const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // re
 
 // ---- research set-patterns. assemble() uses owned samples first, cites others' published pools for any shortfall ----
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
-// discoveries vary on TWO independent axes: discipline (type) and colour. Publish goals are a FIXED, predefined set — one per axis × shape.
+// discoveries vary on TWO independent axes: discipline (type) and colour.
 export type AxisName = 'type' | 'color';
 export type ShapeName = 'triple' | 'rainbow';
 const axisGet = (a: AxisName): ((d: Discovery) => DType | number) => a === 'type' ? d => d.type : d => d.color;
 const axisVals = (a: AxisName): (DType | number)[] => a === 'type' ? DTYPES : Array.from({ length: COLORS }, (_, i) => i);
-export interface Pattern { name: string; label: string; axis: AxisName; shape: ShapeName; prestige: number; money: number; }
-const PATTERNS: Pattern[] = [
-  { name: 'discTriple',  label: 'discipline triple',  axis: 'type',  shape: 'triple',  prestige: 2, money: 1 },   // 3 of one discipline
-  { name: 'colTriple',   label: 'colour triple',      axis: 'color', shape: 'triple',  prestige: 2, money: 1 },   // 3 of one colour
-  { name: 'discRainbow', label: 'discipline rainbow', axis: 'type',  shape: 'rainbow', prestige: 4, money: 2 },   // one of each discipline
-  { name: 'colRainbow',  label: 'colour rainbow',     axis: 'color', shape: 'rainbow', prestige: 4, money: 2 },   // one of each colour
+// A goal is a FIXED shape. `value` set → a specific-value triple (3 of THAT value); undefined → a rainbow (one of each value on the axis).
+export interface Pattern { name: string; label: string; axis: AxisName; shape: ShapeName; value?: DType | number; prestige: number; money: number; }
+const TRIP_P = 3, TRIP_M = 1, RAIN_P = 4, RAIN_M = 2;
+// the 10 GOAL VARIANTS: 4 discipline triples + 4 colour triples + 2 rainbows. Each match draws GOALS_PER_MATCH of them.
+const COL_NAME = ['red', 'blue', 'gold', 'violet'];
+const VARIANTS: Pattern[] = [
+  ...DTYPES.map((t): Pattern => ({ name: `t-${t}`, label: `triple ${t}`, axis: 'type', shape: 'triple', value: t, prestige: TRIP_P, money: TRIP_M })),
+  ...Array.from({ length: COLORS }, (_, c): Pattern => ({ name: `c-${c}`, label: `triple ${COL_NAME[c] ?? c}`, axis: 'color', shape: 'triple', value: c, prestige: TRIP_P, money: TRIP_M })),
+  { name: 'discRainbow', label: 'discipline rainbow', axis: 'type', shape: 'rainbow', prestige: RAIN_P, money: RAIN_M },
+  { name: 'colRainbow', label: 'colour rainbow', axis: 'color', shape: 'rainbow', prestige: RAIN_P, money: RAIN_M },
 ];
-export { PATTERNS };
-// resolve one fixed goal (axis+shape) against carried + citable discoveries
-function assembleGoal(axis: AxisName, shape: ShapeName, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
-  const get = axisGet(axis), vals = axisVals(axis);
-  if (shape === 'triple') {                                           // 3 sharing one value on this axis
-    let best: { ownedIdx: number[]; cited: number } | null = null;
-    for (const V of vals) {
-      const oIdx: number[] = []; owned.forEach((d, i) => { if (get(d) === V) oIdx.push(i); });
-      const cAvail = citable.filter(d => get(d) === V).length;
-      if (oIdx.length + cAvail >= 3) { const useOwned = Math.min(3, oIdx.length); const cand = { ownedIdx: oIdx.slice(0, useOwned), cited: 3 - useOwned }; if (cand.cited <= MAX_CITE && (!best || cand.cited < best.cited)) best = cand; }
-    }
-    return best;
+const GOALS_PER_MATCH = 8;
+export { VARIANTS };
+function pickGoals(rand: () => number): Pattern[] {   // draw GOALS_PER_MATCH distinct variants for this match
+  const pool = VARIANTS.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, GOALS_PER_MATCH);
+}
+// resolve one goal against carried + citable discoveries
+function assembleGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
+  const get = axisGet(pat.axis);
+  if (pat.shape === 'triple') {                                       // 3 of the goal's specific value
+    const V = pat.value!;
+    const oIdx: number[] = []; owned.forEach((d, i) => { if (get(d) === V) oIdx.push(i); });
+    const cAvail = citable.filter(d => get(d) === V).length;
+    if (oIdx.length + cAvail < 3) return null;
+    const useOwned = Math.min(3, oIdx.length), cited = 3 - useOwned;
+    return cited <= MAX_CITE ? { ownedIdx: oIdx.slice(0, useOwned), cited } : null;
   }
-  const ownedIdx: number[] = [], used = new Set<number>(); let cited = 0;   // rainbow: one of each value on this axis
-  for (const V of vals) {
+  const ownedIdx: number[] = [], used = new Set<number>(); let cited = 0;   // rainbow: one of each value on the axis
+  for (const V of axisVals(pat.axis)) {
     let oi = -1; for (let i = 0; i < owned.length; i++) if (get(owned[i]) === V && !used.has(i)) { oi = i; break; }
     if (oi >= 0) { ownedIdx.push(oi); used.add(oi); } else if (citable.some(d => get(d) === V)) cited++; else return null;
   }
   return cited <= MAX_CITE ? { ownedIdx, cited } : null;
 }
-function assemble(name: string, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
-  const pat = PATTERNS.find(p => p.name === name); return pat ? assembleGoal(pat.axis, pat.shape, owned, citable) : null;
+function assemble(G: GState, name: string, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
+  const pat = G.goals.find(p => p.name === name); return pat ? assembleGoal(pat, owned, citable) : null;
 }
 const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; for (const id in G.players) if (id !== self) out.push(...G.players[id].published); return out; };
 
@@ -476,8 +486,8 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research+publish; may cite others' published discoveries
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
   if (p.ap < 1 || (!G.epilogue && !isHub(tile))) return INVALID_MOVE;   // lab season = publish anywhere
-  const pat = PATTERNS.find(x => x.name === patternName); if (!pat) return INVALID_MOVE;
-  const res = assemble(pat.name, p.samples, citablePool(G, ctx.currentPlayer)); if (!res) return INVALID_MOVE;
+  const pat = G.goals.find(x => x.name === patternName); if (!pat) return INVALID_MOVE;
+  const res = assemble(G, pat.name, p.samples, citablePool(G, ctx.currentPlayer)); if (!res) return INVALID_MOVE;
   p.ap -= 1;
   const used = res.ownedIdx.map(i => p.samples[i]);
   res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => p.samples.splice(i, 1));
@@ -530,7 +540,7 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
 // heuristic policy: publish at a hub; grab the boat when it unlocks water-bound forage; drive roads + boat water toward the goal
 export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...PATTERNS].sort((a, b) => b.prestige - a.prestige)) if (assemble(pat.name, p.samples, cit)) return { move: 'publish', args: [pat.name] };
+  if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.name, p.samples, cit)) return { move: 'publish', args: [pat.name] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money (free action)
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
@@ -585,7 +595,7 @@ export const enumerate = (G: GState, ctx: any) => {
     if (tile.equipment.some(e => e.kind === 'boat') && !p.boat) out.push({ move: 'pickup', args: ['boat'] });
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) { const cit = citablePool(G, ctx.currentPlayer); PATTERNS.forEach(pat => { if (assemble(pat.name, p.samples, cit)) out.push({ move: 'publish', args: [pat.name] }); }); }  // lab research = publish anywhere
+  if (p.ap >= 1 && (G.epilogue || isHub(tile))) { const cit = citablePool(G, ctx.currentPlayer); G.goals.forEach(pat => { if (assemble(G, pat.name, p.samples, cit)) out.push({ move: 'publish', args: [pat.name] }); }); }  // lab research = publish anywhere
   out.push({ event: 'endTurn' });
   return out;
 };
@@ -636,6 +646,7 @@ export const Expedition: Game<GState> = {
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand) },
+      goals: pickGoals(prng((seed ^ 0x9e3779b1) >>> 0)),   // 8 of 10 publish-goal variants, drawn per match
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
