@@ -205,21 +205,27 @@ function genOnce(seed: number) {
   };
   // TWO road 3-way junctions (Y/T splits, mirroring the river's one 3-way): each junction cell carries three road edges — one back to the network, two outward arms
   const freeDir = (i: number, d: [number, number]) => { const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; return r >= 0 && r < N && c >= 0 && c < N && !g[ix(r, c)]; };
+  const juncCells: number[] = [];
   for (let b = 0; b < 2; b++) {
-    let anchor = -1, junc = -1, arms: [number, number][] = [];
-    for (const a of roadCells().sort(() => rand() - 0.5)) {                       // scan road cells (randomised) for a spot that yields a clean 3-way
-      const js = nbrs(a).filter(j => !g[j]).sort((p, q) => distCtr((q / N) | 0, q % N) - distCtr((p / N) | 0, p % N));   // junction sits on the outward empty neighbour
-      for (const j of js) {
+    type Cand = { a: number; j: number; arms: [number, number][]; score: number };
+    const viable: Cand[] = [];
+    for (const a of roadCells()) {                                                // gather every spot that yields a clean 3-way…
+      for (const j of nbrs(a).filter(j => !g[j])) {
         const back: [number, number] = [((a / N) | 0) - ((j / N) | 0), (a % N) - (j % N)];   // direction back to the network (excluded from the arms)
         const fa = CARD.filter(d => !(d[0] === back[0] && d[1] === back[1]) && freeDir(j, d))
                        .sort((p, q) => distCtr(((j / N) | 0) + q[0], (j % N) + q[1]) - distCtr(((j / N) | 0) + p[0], (j % N) + p[1]));   // outward arms first
-        if (fa.length >= 2) { anchor = a; junc = j; arms = fa.slice(0, 2); break; }
+        if (fa.length < 2) continue;
+        const jr = (j / N) | 0, jc = j % N;
+        // …scored to SPREAD: outward from centre, and far from any junction already placed (so the two don't clump)
+        const spread = juncCells.length ? Math.min(...juncCells.map(p => Math.abs(((p / N) | 0) - jr) + Math.abs((p % N) - jc))) : 0;
+        viable.push({ a, j, arms: fa.slice(0, 2), score: spread * 2 + distCtr(jr, jc) });
       }
-      if (junc >= 0) break;
     }
-    if (junc < 0) break;
-    set(junc, roadBase()); link(anchor, junc);                                   // edge back to the network
-    for (const d of arms) growArm(junc, d, 4 + Math.floor(rand() * 4));          // two outward arms complete the 3-way
+    if (!viable.length) break;
+    viable.sort((x, y) => y.score - x.score);
+    const pick = viable[Math.floor(rand() * Math.max(1, Math.ceil(viable.length * 0.25)))];   // random among the top quarter (spread, but varied)
+    set(pick.j, roadBase()); link(pick.a, pick.j); juncCells.push(pick.j);        // edge back to the network
+    for (const d of pick.arms) growArm(pick.j, d, 5 + Math.floor(rand() * 4));    // two outward arms (a little longer → more reach) complete the 3-way
   }
 
   // flood jungle, carve rocky + grassland patches (all passable land; rocky/jungle = 2 AP bushwhack)
