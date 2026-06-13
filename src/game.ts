@@ -257,6 +257,11 @@ function genOnce(seed: number) {
     if (b === 1 && r < N - 1) j = i + N; else if (b === 4 && r > 0) j = i - N; else if (b === 2 && c > 0) j = i - 1; else if (b === 8 && c < N - 1) j = i + 1;
     if (j >= 0 && isLand(j) && g[j].roads === 0) set(j, 'void');
   }
+  // NO INNER VOID: flood void inward from the grid border; any void cell that border-flood can't reach is enclosed by active land → reclaim it as land (the map stays a solid blob, no holes)
+  const outerVoid = new Set<number>(); const vq: number[] = [];
+  for (let i = 0; i < N * N; i++) { const r = (i / N) | 0, c = i % N; if ((r === 0 || c === 0 || r === N - 1 || c === N - 1) && isVoid(g[i])) { outerVoid.add(i); vq.push(i); } }
+  for (let qi = 0; qi < vq.length; qi++) { const u = vq[qi]; for (const v of nbrs(u)) if (isVoid(g[v]) && !outerVoid.has(v)) { outerVoid.add(v); vq.push(v); } }
+  for (let i = 0; i < N * N; i++) if (isVoid(g[i]) && !outerVoid.has(i)) set(i, roadBase());   // enclosed hole → fresh land
   // the BASE hub sits a few road-tiles out from the bridge (road-distance ≈ 3), not right beside it
   const bdist = new Map<number, number>([[bridges[0], 0]]); const bq2 = [bridges[0]];
   while (bq2.length) { const u = bq2.shift()!; const d = bdist.get(u)!; for (const v of nbrs(u)) if (!bdist.has(v) && (g[u].roads & dirBit(u, v))) { bdist.set(v, d + 1); bq2.push(v); } }
