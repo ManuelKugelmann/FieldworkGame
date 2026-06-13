@@ -13,8 +13,8 @@ const EVENT_TEXT: Record<string, string> = {
   rockslide: 'Rockslide!', washout: 'Washout · bridge severed', monsoon: 'Monsoon brewing',
 };
 export function classifyLog(line: string): Toast | null {
-  const mv = line.match(/→ \d+ \(-(\d+)ap( ⛵)?\)/);   // foot/boat move: toast the AP it cost
-  if (mv) return { text: `${mv[2] ? 'Boat' : 'Move'} · −${mv[1]} AP`, kind: 'info' };
+  const mv = line.match(/→ \d+ \(-(\d+)ap/);   // foot/boat move: toast the AP it cost
+  if (mv) return { text: `${line.includes('⛵') ? 'Boat' : 'Move'} · −${mv[1]} AP`, kind: 'info' };
   if (line.startsWith('catalogue ')) {
     const p = line.split(' '), tag = p[1], res = p[p.length - 1];
     if (res === 'collected') return { text: `Catalogued ${tag} · −1 AP`, kind: 'good' };
@@ -79,7 +79,7 @@ export const tileAt = (px: number, py: number, G: GState): number => {
 export function spatialTargets(actions: Action[], G: GState, pid: string): Map<number, Action> {
   const best = new Map<number, { a: Action; ap: number }>();
   for (const a of actions) {
-    if (a.move !== 'move' && a.move !== 'drive') continue;
+    if (a.move !== 'move' && a.move !== 'drive' && a.move !== 'boatRun') continue;
     const t = a.args![0] as number, ap = targetAP(G, pid, a);
     const cur = best.get(t);
     if (!cur || ap < cur.ap) best.set(t, { a, ap });   // lower AP cost takes precedence
@@ -235,7 +235,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     for (const [t, a] of targets) {
       const c = t % G.cols, r = (t / G.cols) | 0, x = c * CELL, y = r * CELL;
       cctx.strokeStyle = '#ffd24a'; cctx.lineWidth = 2.5;
-      cctx.setLineDash(a.move === 'drive' ? [4, 3] : []);
+      cctx.setLineDash(a.move === 'move' ? [] : [4, 3]);   // dashed = vehicle hop (drive / boat-run)
       cctx.strokeRect(x + 3, y + 3, CELL - 6, CELL - 6);
       cctx.setLineDash([]);
       const ap = targetAP(G, ctxState.currentPlayer, a);

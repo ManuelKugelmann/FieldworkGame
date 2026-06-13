@@ -21,7 +21,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 15, ACTIVE_TILES = 110, START_AP = 4,  // fixed 15×15 footprint, ~110 tiles kept active (rest void) → consistent size + spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, HELILIFT_COST = 12;  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
+  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, HELILIFT_COST = 12;  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
 const RICH: Record<Terrain, number> = { grassland: 1, wild: 3, forest: 2, rocky: 3, water: 0, void: 0 };  // rocky = geology-rich; grassland = sparse
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
@@ -53,10 +53,17 @@ function roadStepDist(map: Tile[], from: number, to: number): number {   // road
   while (q.length) { const u = q.shift()!; const d = seen.get(u)!; for (const v of nbrs(u)) if (!seen.has(v) && (map[u].roads & dirBit(u, v)) && !onBlocked(map, u, v)) { if (v === to) return d + 1; seen.set(v, d + 1); q.push(v); } }
   return Infinity;
 }
+function riverStepDist(map: Tile[], from: number, to: number): number {   // river-channel BFS distance (for boat cost)
+  if (from === to) return 0;
+  const seen = new Map<number, number>([[from, 0]]); const q = [from];
+  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; for (const v of nbrs(u)) if (!seen.has(v) && (map[u].rivers & dirBit(u, v)) && !onBlocked(map, u, v)) { if (v === to) return d + 1; seen.set(v, d + 1); q.push(v); } }
+  return Infinity;
+}
 // AP a legal target costs, for the UI. Foot/boat = the step cost; car = fractional (1 AP buys CAR_STEPS road tiles)
 export function targetAP(G: GState, pid: string, a: { move?: string; args?: unknown[] }): number {
   const p = G.players[pid];
   if (a.move === 'drive') { const car = myVehicle(G, pid); const d = car ? roadStepDist(G.map, car.pos, a.args![0] as number) : Infinity; return Number.isFinite(d) ? d / CAR_STEPS : 1; }
+  if (a.move === 'boatRun') { const d = riverStepDist(G.map, p.pos, a.args![0] as number); return Number.isFinite(d) ? d / BOAT_STEPS : 1; }   // 1 AP buys BOAT_STEPS channel tiles
   if (a.move === 'move') return apCost(G, p.pos, a.args![0] as number, p.boat);
   return 0;
 }
@@ -90,6 +97,12 @@ function roadReach(map: Tile[], from: number, maxSteps: number): number[] {   //
   const seen = new Map<number, number>([[from, 0]]); const q = [from]; const out: number[] = [];
   while (q.length) { const u = q.shift()!; const d = seen.get(u)!; if (d >= maxSteps) continue;
     for (const v of nbrs(u)) if (!seen.has(v) && (map[u].roads & dirBit(u, v)) && !onBlocked(map, u, v)) { seen.set(v, d + 1); out.push(v); q.push(v); } }
+  return out;
+}
+function riverReach(map: Tile[], from: number, maxSteps: number): number[] {   // boat: water tiles within maxSteps river-channel edges (link-based)
+  const seen = new Map<number, number>([[from, 0]]); const q = [from]; const out: number[] = [];
+  while (q.length) { const u = q.shift()!; const d = seen.get(u)!; if (d >= maxSteps) continue;
+    for (const v of nbrs(u)) if (!seen.has(v) && (map[u].rivers & dirBit(u, v)) && !onBlocked(map, u, v)) { seen.set(v, d + 1); out.push(v); q.push(v); } }
   return out;
 }
 function compMove(map: Tile[], nodes: number[]): number {            // components under the movement rule
@@ -283,6 +296,13 @@ const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up
   p.ap -= 1; p.pos = dest; car.pos = dest; reveal(G, dest, random);   // player + car travel together
   G.log.push(`drive→${dest}`);
 };
+const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boating along the river channel: up to BOAT_STEPS tiles per AP (rivers linkage)
+  const p = G.players[ctx.currentPlayer];
+  if (G.epilogue || p.ap < 1 || !p.boat || !riverReach(G.map, p.pos, BOAT_STEPS).includes(dest)) return INVALID_MOVE;
+  const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;
+  p.ap -= 1; p.pos = dest; reveal(G, dest, random);
+  G.log.push(`P${ctx.currentPlayer} ⛵→ ${dest} (-1ap)`);
+};
 const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into a co-located, unoccupied car (free)
   const p = G.players[ctx.currentPlayer], car = G.vehicles[v];
   if (G.epilogue || !car || car.pos !== p.pos || car.driver !== null) return INVALID_MOVE;
@@ -452,6 +472,7 @@ export const enumerate = (G: GState, ctx: any) => {
     const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
     nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });
     if (p.ap >= 1 && myCar) roadReach(G.map, myCar.pos, CAR_STEPS).forEach(d => out.push({ move: 'drive', args: [d] }));
+    if (p.ap >= 1 && p.boat) riverReach(G.map, p.pos, BOAT_STEPS).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
     G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1 && p.samples.length < CARRY_SLOTS) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));
@@ -516,7 +537,7 @@ export const Expedition: Game<GState> = {
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
-  moves: { move, catalogue, publish, buy, drive, helilift, board, leave, drop, pickup },
+  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup },
   turn: {
     onBegin: ({ G, ctx, random }) => {
       if (!G.epilogue) {
