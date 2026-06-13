@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, logToasts, type Action, type Toast,
+  actionLabel, describeTile, sampleChips, logToasts, prettyLog, type Action, type Toast,
 } from './render';
 
 // ---- Canvas viewer + click-to-play. The bgio headless Client is the engine;
@@ -127,7 +127,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     if (right.childElementCount) bar.appendChild(right);
   }
 
-  $('log').textContent = G.log.slice(-30).join('\n');
+  $('log').textContent = G.log.slice(-30).map(prettyLog).join('\n');
 }
 
 canvas.addEventListener('mousemove', e => {

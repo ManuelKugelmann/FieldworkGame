@@ -4,7 +4,7 @@ import { enumerate, botAction } from '../game';
 import type { GState } from '../game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, logToasts, type Action, type Toast,
+  actionLabel, describeTile, sampleChips, logToasts, prettyLog, type Action, type Toast,
 } from '../render';
 
 // bgio React board. Same shared renderer as the Canvas viewer (terrain, paths,
@@ -126,7 +126,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
 
           <div className="panel">
             <h2>Log</h2>
-            <pre className="log">{G.log.slice(-30).join('\n')}</pre>
+            <pre className="log">{G.log.slice(-30).map(prettyLog).join('\n')}</pre>
           </div>
         </div>
       </div>

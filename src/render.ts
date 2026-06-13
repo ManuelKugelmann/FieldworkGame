@@ -17,10 +17,10 @@ export function classifyLog(line: string): Toast | null {
   if (mv) return { text: `${line.includes('⛵') ? 'Boat' : 'Move'} · −${mv[1]} AP`, kind: 'info' };
   if (line.startsWith('catalogue ')) {
     const p = line.split(' '), tag = p[1], res = p[p.length - 1];
-    if (res === 'collected') return { text: `Catalogued ${tag} · −1 AP`, kind: 'good' };
-    if (res === 'stayed') return { text: `${tag} stayed · −1 AP`, kind: 'info' };
-    if (res === 'fled') return { text: `${tag} fled · −1 AP`, kind: 'bad' };
-    if (res === 'destroyed') return { text: `${tag} destroyed · −1 AP`, kind: 'bad' };
+    if (res === 'collected') return { text: `Catalogued ${prettyTag(tag)} · −1 AP`, kind: 'good' };
+    if (res === 'stayed') return { text: `${prettyTag(tag)} stayed · −1 AP`, kind: 'info' };
+    if (res === 'fled') return { text: `${prettyTag(tag)} fled · −1 AP`, kind: 'bad' };
+    if (res === 'destroyed') return { text: `${prettyTag(tag)} destroyed · −1 AP`, kind: 'bad' };
     return null;
   }
   if (line.startsWith('publish ')) { const m = line.match(/publish (\w+).*?(\+\d+P)/); return { text: (m ? `Published ${m[1]} ${m[2]}` : 'Published') + ' · −1 AP', kind: 'good' }; }
@@ -40,7 +40,11 @@ export let CELL = 46;              // CSS px per tile — recomputed responsivel
 export const MIN_CELL = 16;        // floor so the board stays usable on tiny viewports
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff6f5c', bot: '#57e466', arch: '#bb9cff' };   // brighter, stronger discovery colours
-export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: 'G', zoo: 'Z', bot: 'B', arch: 'A' };   // type glyph stamped on an explored discovery
+export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: '💎', zoo: '🐾', bot: '🌿', arch: '🏺' };   // type icon — used everywhere instead of the geo/zoo/bot/arch words
+const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo' || s === 'bot' || s === 'arch';
+export const prettyFind = (d: Discovery) => `${DTYPE_SYMBOL[d.type]}${d.color}`;                     // e.g. 💎3
+const prettyTag = (tag: string) => { const m = tag.match(/^([a-z]+)(\d+)$/); return m && isDType(m[1]) ? DTYPE_SYMBOL[m[1]] + m[2] : tag; };   // "geo3" → "💎3"
+export const prettyLog = (line: string) => line.replace(/\b(geo|zoo|bot|arch)(\d)/g, (_m, t, c) => DTYPE_SYMBOL[t as Discovery['type']] + c);   // swap type words for icons in a log line
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#5d6e3a', jungle: '#2c4a20', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
@@ -116,7 +120,7 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 
 // label for a non-spatial action button (move/drive are board clicks -> null)
 export function actionLabel(a: Action, tile: Tile): string | null {
-  if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${d.type}${d.color}` : null; }
+  if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)}` : null; }
   if (a.move === 'publish') return a.args![0] === 'rainbow' ? 'Publish rainbow (+7P)' : 'Publish triple (+4P)';
   if (a.move === 'buy') return 'Buy gear (−5$)';
   if (a.move === 'board') return 'Board car';
@@ -141,13 +145,13 @@ export function describeTile(G: GState, i: number): string {
   if (gearN) bits.push(`${gearN} gear cached`);
   if (t.equipment.some(e => e.kind === 'boat')) bits.push('boat here');
   if (!t.revealed) bits.push('unexplored');
-  else if (t.finds.length) bits.push('finds: ' + t.finds.map(d => `${d.type}${d.color}`).join(' '));
+  else if (t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
   return bits.join(' · ');
 }
 
 export function sampleChips(ds: Discovery[]): string {
   if (!ds.length) return '<span style="opacity:.5">none</span>';
-  return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${d.type}${d.color}</span>`).join('');
+  return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 
 function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, color: string, width: number, dash: number[]) {
@@ -240,7 +244,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
         cctx.fillStyle = DTYPE_COLOR[ty];
         cctx.beginPath(); cctx.arc(sx, sy, rrBig, 0, 7); cctx.fill();
         cctx.lineWidth = 1; cctx.strokeStyle = 'rgba(0,0,0,0.55)'; cctx.stroke();   // dark rim for contrast on any terrain
-        if (CELL >= 22) { cctx.fillStyle = '#0b0f0a'; cctx.font = `bold ${Math.max(7, rrBig * 1.5)}px ui-monospace, monospace`; cctx.fillText(DTYPE_SYMBOL[ty], sx, sy + 0.5); }   // type symbol on the dot
+        if (CELL >= 22) { cctx.font = `${rrBig * 1.7}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[ty], sx, sy + 0.5); }   // type icon on the dot
       } else {
         cctx.fillStyle = GRAY_BIOME[t.terrain];
         cctx.beginPath(); cctx.arc(sx, sy, rr, 0, 7); cctx.fill();
