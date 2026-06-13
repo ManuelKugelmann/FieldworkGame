@@ -3,7 +3,8 @@ import { Expedition, botAction, enumerate } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, logToasts, prettyLog, type Action, type Toast,
+  actionLabel, describeTile, sampleChips, logToasts, prettyLog, publishPreviews,
+  DTYPE_SYMBOL, type Action, type Toast,
 } from './render';
 
 // ---- Canvas viewer + click-to-play. The bgio headless Client is the engine;
@@ -95,6 +96,12 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
     : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap}AP · 🌧${G.monsoon}/4`;
+
+  $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
+    const cells = pat.cells.map(c => `<span class="cell ${c.state}">${DTYPE_SYMBOL[c.type]}</span>`).join('');
+    return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.name}</span>` +
+      `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${pat.ready ? ' ✓' : ''}</span>`;
+  }).join('');
 
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';

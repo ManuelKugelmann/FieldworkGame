@@ -44,6 +44,15 @@
       #log { max-height: 32vh; overflow: auto; font-size: .72rem; color: #9fc69a; }
       .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
       #status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; min-height: 1.2rem; }
+      .plan { display: flex; gap: .5rem; margin-bottom: .4rem; flex-wrap: wrap; justify-content: center; }
+      .pat { display: flex; align-items: center; gap: .35rem; padding: .18rem .5rem; border: 1px solid #1d3d22; border-radius: 5px; font-size: .74rem; color: #9fc69a; }
+      .pat.ready { border-color: #3a7a3f; background: #14301a; color: #bdebbd; }
+      .pat .nm { font-weight: 600; text-transform: capitalize; }
+      .pat .rw { opacity: .7; }
+      .pat .cells { display: inline-flex; gap: .12rem; }
+      .pat .cell.have { opacity: 1; }
+      .pat .cell.cite { opacity: .55; }                 /* fillable by citing another player */
+      .pat .cell.need { opacity: .2; filter: grayscale(1); }   /* still missing */
       .toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: .35rem; align-items: center; z-index: 50; pointer-events: none; }
       .toast { padding: .4rem .8rem; border-radius: 6px; font-size: .8rem; border: 1px solid #2f5a34; background: #16301a; color: #cfe9c8; box-shadow: 0 2px 10px rgba(0,0,0,.55); animation: toastIn .15s ease-out; }
       .toast.good { border-color: #3a7a3f; background: #14301a; color: #bdebbd; }
@@ -58,6 +67,7 @@
     <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span></h1>
     <div class="cols">
       <div class="boardwrap">
+        <div id="plan" class="plan"></div>
         <canvas id="board"></canvas>
         <div class="panel inspectwrap"><div id="inspect">hover a tile</div></div>
       </div>

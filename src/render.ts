@@ -153,6 +153,43 @@ export function sampleChips(ds: Discovery[]): string {
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 
+// ---- publish planner: a constant preview of the two patterns and how close the current player is ----
+const CITE_BUDGET = 1;   // mirrors MAX_CITE in game.ts: a pattern may borrow ≤1 slot from another player's published work
+const DTYPES_R: Discovery['type'][] = ['geo', 'zoo', 'bot', 'arch'];
+export interface PatternCell { type: Discovery['type']; state: 'have' | 'cite' | 'need'; }   // have = carried · cite = fillable from others' published · need = missing
+export interface PatternPreview { name: string; reward: string; cells: PatternCell[]; ready: boolean; }
+export function publishPreviews(G: GState, pid: string): PatternPreview[] {
+  const owned = G.players[pid].samples;
+  const cit: Record<string, number> = { geo: 0, zoo: 0, bot: 0, arch: 0 };
+  for (const id in G.players) if (id !== pid) for (const d of G.players[id].published) cit[d.type]++;
+  const own = (t: Discovery['type']) => owned.filter(d => d.type === t).length;
+
+  // rainbow: one of each discipline (≤1 cited)
+  let used = 0;
+  const rbCells: PatternCell[] = DTYPES_R.map(t => {
+    if (own(t) > 0) return { type: t, state: 'have' };
+    if (cit[t] > 0 && used < CITE_BUDGET) { used++; return { type: t, state: 'cite' }; }
+    return { type: t, state: 'need' };
+  });
+  const rbReady = !rbCells.some(c => c.state === 'need');
+
+  // triple: 3 of one discipline (≤1 cited) — show the discipline you're closest on
+  const score = (t: Discovery['type']) => own(t) + Math.min(cit[t], CITE_BUDGET);
+  const bestT = DTYPES_R.slice().sort((a, b) => own(b) - own(a) || score(b) - score(a))[0];
+  let cu = 0;
+  const trCells: PatternCell[] = [0, 1, 2].map(k => {
+    if (k < Math.min(3, own(bestT))) return { type: bestT, state: 'have' };
+    if (cit[bestT] > 0 && cu < CITE_BUDGET) { cu++; return { type: bestT, state: 'cite' }; }
+    return { type: bestT, state: 'need' };
+  });
+  const trReady = own(bestT) + Math.min(cit[bestT], CITE_BUDGET) >= 3 && 3 - own(bestT) <= CITE_BUDGET;
+
+  return [
+    { name: 'triple', reward: '+4P +2$', cells: trCells, ready: trReady },
+    { name: 'rainbow', reward: '+7P +3$', cells: rbCells, ready: rbReady },
+  ];
+}
+
 function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, color: string, width: number, dash: number[]) {
   const ca = a % G.cols, ra = (a / G.cols) | 0, cb = b % G.cols, rb = (b / G.cols) | 0;
   cctx.strokeStyle = color; cctx.lineWidth = width; cctx.setLineDash(dash);
