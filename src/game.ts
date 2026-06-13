@@ -121,14 +121,22 @@ function genOnce(seed: number) {
   const linkS = (a: number, b: number) => join(a, b, 'smallRivers');  // brook edge (boat-only highway)
   const block = (a: number, b: number) => join(a, b, 'blocked');      // cliff edge (uncrossable)
 
-  // river: 4-connected vertical path; trunk kept in the central column band so the road bridge lands in the centre quadrant
+  // river: 4-connected staircase of horizontal runs (twistier, more horizontal); trunk kept in the central column band so the bridge lands in the centre quadrant
   const wlo = Math.max(1, Math.ceil(N / 3)), whi = Math.min(N - 2, Math.floor(2 * N / 3));
-  let col = Math.max(wlo, Math.min(whi, Math.floor(N / 2) - 1 + Math.floor(rand() * 3))); const river: number[] = [];
-  for (let r = 0; r < N; r++) { set(ix(r, col), 'water'); river.push(ix(r, col)); if (r < N - 1) { let nc = col + (rand() < 0.62 ? 0 : (rand() < 0.5 ? -1 : 1)); nc = Math.max(wlo, Math.min(whi, nc)); if (nc !== col) { set(ix(r, nc), 'water'); river.push(ix(r, nc)); } col = nc; } }
+  let col = Math.max(wlo, Math.min(whi, Math.floor(N / 2) - 1 + Math.floor(rand() * 3))); const river: number[] = []; const water = new Set<number>();
+  const addW = (i: number) => { if (!water.has(i)) { set(i, 'water'); river.push(i); water.add(i); } };
+  for (let r = 0; r < N; r++) {
+    addW(ix(r, col));                                              // vertical down-step (crossable by a straight bridge)
+    if (r < N - 1 && rand() < 0.6) {                               // horizontal run → a twistier, more horizontal river
+      const hdir = col <= wlo ? 1 : col >= whi ? -1 : (rand() < 0.5 ? -1 : 1);
+      const runLen = 1 + Math.floor(rand() * 3);
+      for (let h = 0; h < runLen; h++) { const nc = col + hdir; if (nc < wlo || nc > whi) break; col = nc; addW(ix(r, col)); }
+    }
+  }
 
   // BIG BRANCH: a major fork off the trunk to an edge — full barrier (own crossing) → carves a 3rd section
   const branch: number[] = [];
-  for (let att = 0; att < 14 && !branch.length; att++) {
+  for (let att = 0; att < 20 && !branch.length; att++) {
     const bp = river[3 + Math.floor(rand() * Math.max(1, river.length - 6))];
     const dir = (bp % N) < N / 2 ? 1 : -1; let pr = bp; const blen = 3 + Math.floor(rand() * 2); const cells: number[] = [];
     for (let s = 0; s < blen; s++) {
