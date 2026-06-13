@@ -153,8 +153,8 @@ export function sampleChips(ds: Discovery[]): string {
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 
-// ---- publish planner: the always-available poker payout table + how close the current player is ----
-// Discipline = rank (of-a-kind/full house/straight), colour = suit (flush). evalGoal() (in game.ts) is the single source of truth.
+// ---- publish planner: the shared pool of open research projects + how close the current player is ----
+// Each project pins concrete values; discipline = icon, colour = swatch (both for both-axes projects). evalGoal() (in game.ts) is the single source of truth.
 export const DCOLOR = ['#e0563a', '#36a85a', '#e0c23a', '#a86ae0'];   // the 4 discovery colours (swatches in the planner / chips)
 export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; swatch?: string; }   // have = carried · cite = fillable from others' published · need = missing
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; }
@@ -166,9 +166,11 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
 
   return G.goals.map((goal: Pattern) => {
     const r = evalGoal(goal, owned, citable);
-    const cells: PatternCell[] = r.slots.map(s => goal.axis === 'type'
-      ? { state: s.state, icon: DTYPE_SYMBOL[s.value as Discovery['type']] }
-      : { state: s.state, swatch: DCOLOR[s.value as number] });
+    const cells: PatternCell[] = r.slots.map(s => ({
+      state: s.state,
+      icon: s.type !== undefined ? DTYPE_SYMBOL[s.type] : undefined,
+      swatch: s.color !== undefined ? DCOLOR[s.color] : undefined,
+    }));
     return { name: goal.id, label: goal.label, reward: `+${goal.prestige}P +${goal.money}$`, cells, ready: r.ok };
   });
 }

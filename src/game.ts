@@ -16,7 +16,8 @@ export interface GState {
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
   vehicles: Vehicle[];                                     // shared cars on the board (start at base)
   pools: Partial<Record<Terrain, Discovery[]>>;
-  goals: Pattern[];                                        // this match's active publish goals (8 of 10 variants)
+  goals: Pattern[];                                        // the open research questions on the board (shared, consumed on publish)
+  goalDeck: Pattern[];                                     // remaining projects; the pool refills from here on a claim
   events: string[]; monsoon: number; epilogue: boolean; labLeft: number; log: string[];   // epilogue = indoor lab season
 }
 
@@ -424,43 +425,26 @@ const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // re
   G.log.push(`P${ctx.currentPlayer} pickup ${kind}@${p.pos}`);
 };
 
-// ---- research goals: a fixed, ALWAYS-AVAILABLE poker payout table over the two-axis "deck".
-// Mapping: discipline = RANK (of-a-kind / full house / straight), colour = SUIT (flush). Higher poker hand → more prestige.
-// A goal is `counts` groups on one axis (each group = a distinct value with that many cards). Owned cards fill first; ≤MAX_CITE shortfall cites others' published. Discoveries used are CONSUMED into the publisher's pool.
+// ---- research projects: a SHARED, CONSUMED pool of open questions (first to publish CLAIMS it; the pool refills from a per-match deck).
+// Poker grammar (discipline = rank, colour = suit) made CONCRETE: each project pins specific values, so two players can race the same question.
+// A project is a list of PARTS; each part needs `count` discoveries pinned by discipline and/or colour. Owned fill first; ≤MAX_CITE shortfall cites others' published. Discoveries used are CONSUMED into the publisher's pool.
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
 const COL_NAME = ['red', 'green', 'gold', 'violet'];   // the 4 colours (match DCOLOR in render)
-export interface Pattern { id: string; label: string; axis: 'type' | 'color'; counts: number[]; prestige: number; money: number; }
-const axisGet = (a: 'type' | 'color'): ((d: Discovery) => DType | number) => a === 'type' ? d => d.type : d => d.color;
-const axisVals = (a: 'type' | 'color'): (DType | number)[] => a === 'type' ? DTYPES : Array.from({ length: COLORS }, (_, i) => i);
-// the hands, weakest → strongest (prestige by poker rank). Singles aren't a hand (min = pair).
-const HANDS: Pattern[] = [
-  { id: 'pair',      label: 'pair',            axis: 'type',  counts: [2],          prestige: 1, money: 0 },   // 2 of one discipline
-  { id: 'twoPair',   label: 'two pair',        axis: 'type',  counts: [2, 2],       prestige: 2, money: 0 },   // 2 + 2 disciplines
-  { id: 'trips',     label: 'three of a kind', axis: 'type',  counts: [3],          prestige: 2, money: 1 },   // 3 of one discipline
-  { id: 'straight',  label: 'straight',        axis: 'type',  counts: [1, 1, 1, 1], prestige: 3, money: 1 },   // one of each discipline (the run)
-  { id: 'flush',     label: 'flush',           axis: 'color', counts: [5],          prestige: 3, money: 1 },   // 5 of one colour (suit)
-  { id: 'fullHouse', label: 'full house',      axis: 'type',  counts: [3, 2],       prestige: 4, money: 2 },   // 3 + 2 disciplines
-  { id: 'quads',     label: 'four of a kind',  axis: 'type',  counts: [4],          prestige: 5, money: 2 },   // 4 of one discipline
-];
-const PUBLISH_MIN = 4;   // the bot won't burn AP on hands below this prestige unless forced (carry full / lab season)
-export interface GoalSlot { value: DType | number; state: 'have' | 'cite' | 'need'; }
-// greedily fit a hand: assign each group (largest first) a distinct value with the most owned cards, citing ≤MAX_CITE shortfall
+export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
+export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
+const POOL_SIZE = 8;   // open research questions on the board at once
+export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
+// fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
 export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
-  const get = axisGet(pat.axis), vals = axisVals(pat.axis);
-  const ownByVal = new Map<DType | number, number[]>(), citByVal = new Map<DType | number, number>();
-  for (const v of vals) { ownByVal.set(v, []); citByVal.set(v, citable.filter(d => get(d) === v).length); }
-  owned.forEach((d, i) => { const v = get(d); if (ownByVal.has(v)) ownByVal.get(v)!.push(i); });
-  const valOrder = [...vals].sort((a, b) => ownByVal.get(b)!.length - ownByVal.get(a)!.length);
-  const groups = pat.counts.map((c, gi) => ({ c, gi })).sort((a, b) => b.c - a.c);
-  const usedVal = new Set<DType | number>(); const ownedIdx: number[] = []; const slots: GoalSlot[] = []; let cited = 0, ok = true;
-  for (const g of groups) {
-    const v = valOrder.find(x => !usedVal.has(x))!; usedVal.add(v);
-    const idxs = ownByVal.get(v)!, have = Math.min(g.c, idxs.length); ownedIdx.push(...idxs.slice(0, have));
-    let cit = citByVal.get(v)!;
-    for (let k = 0; k < g.c; k++) {
-      if (k < have) slots.push({ value: v, state: 'have' });
-      else if (cited < MAX_CITE && cit > 0) { slots.push({ value: v, state: 'cite' }); cited++; cit--; }
-      else { slots.push({ value: v, state: 'need' }); ok = false; }
+  const used = new Set<number>(); const ownedIdx: number[] = []; const slots: GoalSlot[] = []; let cited = 0, ok = true;
+  for (const part of pat.parts) {
+    const match = (d: Discovery) => (part.type === undefined || d.type === part.type) && (part.color === undefined || d.color === part.color);
+    let citLeft = citable.filter(match).length;
+    for (let k = 0; k < part.count; k++) {
+      let oi = -1; for (let i = 0; i < owned.length; i++) if (!used.has(i) && match(owned[i])) { oi = i; break; }
+      if (oi >= 0) { used.add(oi); ownedIdx.push(oi); slots.push({ type: part.type, color: part.color, state: 'have' }); }
+      else if (cited < MAX_CITE && citLeft > 0) { cited++; citLeft--; slots.push({ type: part.type, color: part.color, state: 'cite' }); }
+      else { slots.push({ type: part.type, color: part.color, state: 'need' }); ok = false; }
     }
   }
   return { ok, cited, ownedIdx, slots };
@@ -468,6 +452,27 @@ export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[])
 function assemble(G: GState, id: string, owned: Discovery[], citable: Discovery[]): { ownedIdx: number[]; cited: number } | null {
   const pat = G.goals.find(p => p.id === id); if (!pat) return null;
   const r = evalGoal(pat, owned, citable); return r.ok ? { ownedIdx: r.ownedIdx, cited: r.cited } : null;
+}
+// build the per-match project DECK: concrete poker hands with pinned values (shuffled). The pool is dealt from the top, refilled on claim.
+function buildGoalDeck(rand: () => number): Pattern[] {
+  const colors = Array.from({ length: COLORS }, (_, i) => i);
+  const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  let n = 0; const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => ({ id: `g${n++}`, label, parts, prestige, money });
+  const next = (t: DType) => DTYPES[(DTYPES.indexOf(t) + 1) % 4];
+  const deck: Pattern[] = [
+    // attainable 3-card / 4-card bread-and-butter (the bulk of the pool)
+    ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 5, 1)),
+    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 5, 1)),
+    ...DTYPES.map(t => mk(`${t} + ${next(t)} two pair`, [{ count: 2, type: t }, { count: 2, type: next(t) }], 5, 2)),
+    // premium 5-card / both-axes (rarer, high value)
+    ...DTYPES.map(t => mk(`${t} full house`, [{ count: 3, type: t }, { count: 2, type: next(t) }], 9, 3)),
+    ...colors.map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], 8, 3)),
+    ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 9, 3)),
+    ...colors.map(c => mk(`${COL_NAME[c]} ${DTYPES[c % 4]} triple`, [{ count: 3, type: DTYPES[c % 4], color: c }], 7, 2)),   // both-axes
+    mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t })), 5, 2),
+    mk('colour straight', colors.map(c => ({ count: 1, color: c })), 5, 2),
+  ];
+  return shuf(deck);
 }
 const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; for (const id in G.players) if (id !== self) out.push(...G.players[id].published); return out; };
 
@@ -494,6 +499,8 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
   const prestige = pat.prestige, money = pat.money;                  // flat — cited (≤1) is a top-up, no bonus or penalty
   p.prestige += prestige; p.money += money;                          // research token → unified prestige accumulation
   G.log.push(`publish ${pat.label}${res.cited ? ` (cited ${res.cited})` : ''} +${prestige}P +${money}$`);
+  const gi = G.goals.findIndex(x => x.id === pat.id);                // CLAIM the question: remove it and refill the pool from the deck
+  if (gi >= 0) { G.goals.splice(gi, 1); if (G.goalDeck.length) G.goals.push(G.goalDeck.shift()!); }
 };
 
 
@@ -539,15 +546,23 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
 // heuristic policy: publish at a hub; grab the boat when it unlocks water-bound forage; drive roads + boat water toward the goal
 export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
-  // publish at a hub — but skip AP-inefficient small hands mid-field (only cash them when carry is full or it's the lab season); always take a real hand
-  if (p.ap >= 1 && (G.epilogue || isHub(tile))) { const forced = G.epilogue || p.samples.length >= CARRY_SLOTS;
-    for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if ((pat.prestige >= PUBLISH_MIN || forced) && assemble(G, pat.id, p.samples, cit)) return { move: 'publish', args: [pat.id] }; }
+  // publish at a hub — claim the most valuable open question you can complete (projects are scarce/contested, so grab them)
+  if (p.ap >= 1 && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, p.samples, cit)) return { move: 'publish', args: [pat.id] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money (free action)
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
   const full = p.samples.length >= CARRY_SLOTS;
-  if (!full && p.ap >= 1 && tile.finds.length) return { move: 'catalogue', args: [0] };   // claim a token underfoot
+  if (!full && p.ap >= 1 && tile.finds.length) {   // catalogue the find that best advances an open project (build a hand toward a question)
+    let bestI = 0, bestScore = -1;
+    for (let i = 0; i < tile.finds.length; i++) {
+      const trial = [...p.samples, tile.finds[i]];
+      let score = 0;
+      for (const g of G.goals) { const r = evalGoal(g, trial, cit); score = Math.max(score, (r.ok ? 1000 : 0) + r.slots.filter(s => s.state === 'have').length * 10 + g.prestige); }
+      if (score > bestScore) { bestScore = score; bestI = i; }
+    }
+    return { move: 'catalogue', args: [bestI] };
+  }
   const goalPred = full ? isHub : forageTarget;   // full carry → head to a hub; else explore/forage
   if (!(full && isHub(tile))) {
     const goals = goalCells(G, goalPred);
@@ -647,7 +662,7 @@ export const Expedition: Game<GState> = {
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand) },
-      goals: HANDS.map(h => ({ ...h, counts: [...h.counts] })),   // the fixed poker payout table — always available every match
+      ...(() => { const deck = buildGoalDeck(prng((seed ^ 0x9e3779b1) >>> 0)); return { goals: deck.slice(0, POOL_SIZE), goalDeck: deck.slice(POOL_SIZE) }; })(),   // deal the open-question pool; rest is the refill deck
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
