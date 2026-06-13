@@ -121,31 +121,22 @@ function genOnce(seed: number) {
   const linkS = (a: number, b: number) => join(a, b, 'smallRivers');  // brook edge (boat-only highway)
   const block = (a: number, b: number) => join(a, b, 'blocked');      // cliff edge (uncrossable)
 
-  // river: 4-connected staircase of horizontal runs (twistier, more horizontal); trunk kept in the central column band so the bridge lands in the centre quadrant
-  const wlo = Math.max(1, Math.ceil(N / 3)), whi = Math.min(N - 2, Math.floor(2 * N / 3));
-  let col = Math.max(wlo, Math.min(whi, Math.floor(N / 2) - 1 + Math.floor(rand() * 3))); const river: number[] = []; const water = new Set<number>();
+  // Y RIVER: a junction near the centre + 3 arms at ~120° in a random orientation; each arm runs to an edge → a 3-section barrier in any orientation
+  const river: number[] = []; const water = new Set<number>(); const branch: number[] = [];
   const addW = (i: number) => { if (!water.has(i)) { set(i, 'water'); river.push(i); water.add(i); } };
-  for (let r = 0; r < N; r++) {
-    addW(ix(r, col));                                              // vertical down-step (crossable by a straight bridge)
-    if (r < N - 1 && rand() < 0.6) {                               // horizontal run → a twistier, more horizontal river
-      const hdir = col <= wlo ? 1 : col >= whi ? -1 : (rand() < 0.5 ? -1 : 1);
-      const runLen = 1 + Math.floor(rand() * 3);
-      for (let h = 0; h < runLen; h++) { const nc = col + hdir; if (nc < wlo || nc > whi) break; col = nc; addW(ix(r, col)); }
+  const cmid = (N - 1) / 2;
+  let jr = Math.max(2, Math.min(N - 3, Math.round(cmid + (rand() * 2 - 1)))), jc = Math.max(2, Math.min(N - 3, Math.round(cmid + (rand() * 2 - 1))));
+  addW(ix(jr, jc));
+  const baseAng = rand() * Math.PI * 2;
+  for (let a = 0; a < 3; a++) {
+    const ang = baseAng + a * (Math.PI * 2 / 3), tr = jr + Math.sin(ang) * N * 3, tc = jc + Math.cos(ang) * N * 3;   // far target in this direction
+    let r = jr, c = jc;
+    for (let guard = 0; guard < N * 3; guard++) {
+      if (Math.abs(tr - r) >= Math.abs(tc - c)) r += Math.sign(tr - r); else c += Math.sign(tc - c);   // 4-connected step toward the target (zig-zags to approximate the angle)
+      if (r < 0 || r >= N || c < 0 || c >= N) break;
+      addW(ix(r, c));
+      if (r === 0 || r === N - 1 || c === 0 || c === N - 1) break;   // arm reached the boundary
     }
-  }
-
-  // BIG BRANCH: a major fork off the trunk to an edge — full barrier (own crossing) → carves a 3rd section
-  const branch: number[] = [];
-  for (let att = 0; att < 20 && !branch.length; att++) {
-    const bp = river[3 + Math.floor(rand() * Math.max(1, river.length - 6))];
-    const dir = (bp % N) < N / 2 ? 1 : -1; let pr = bp; const blen = 3 + Math.floor(rand() * 2); const cells: number[] = [];
-    for (let s = 0; s < blen; s++) {
-      const prow = (pr / N) | 0, pc = pr % N; let nr = prow, ncl = pc + dir;
-      if (s > 0 && rand() < 0.35) { ncl = pc; nr = prow + (rand() < 0.5 ? -1 : 1); }   // 4-connected bend
-      if (ncl <= 0 || ncl >= N - 1 || nr < 0 || nr >= N) break;
-      const i = ix(nr, ncl); if (g[i]) break; cells.push(i); pr = i;
-    }
-    if (cells.length >= 3) { cells.forEach(i => set(i, 'water')); branch.push(...cells); }   // commit only a real branch
   }
 
   // (brooks are land-cell edge overlays now — laid after the land flood, near the footpaths)
