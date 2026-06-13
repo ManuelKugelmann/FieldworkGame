@@ -20,7 +20,7 @@ export interface GState {
 }
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
-const DIM_MIN = 10, DIM_MAX = 15, ACTIVE_TILES = 110, START_AP = 4,  // fixed 15×15 footprint, ~110 tiles kept active (rest void) → consistent size + spread  // 4 AP/round
+const DIM_MIN = 10, DIM_MAX = 15, ACTIVE_TILES = 150, START_AP = 4,  // fixed 15×15 footprint, ~150 tiles kept active (rest void) → consistent size + spread  // 4 AP/round
   COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 4, MONSOON_END = 4, MAX_CITE = 1, GEAR_MAX = 2, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12;  // FIND_CHANCE: each potential slot (gray dot) yields a discovery on reveal, else empty  // CAR_STEPS road tiles / BOAT_STEPS river-channel tiles per AP  // helilift: airlift to base; cash or, if short, negative-prestige tokens  // gear: +1 catalogue roll/level, bought with money at a market
 
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 4, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare
@@ -114,7 +114,7 @@ function compTerrain(map: Tile[], pred: (t: Tile) => boolean) {       // plain 4
 
 function genOnce(seed: number) {
   const rand = prng(seed), g: Tile[] = new Array(N * N).fill(null as any);
-  const set = (i: number, t: Terrain, bridge?: Bridge) => { const max = RICH[t]; g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness: Math.floor((max + 1) * rand() ** 2.5), revealed: false, finds: [], equipment: [] }; };  // 0..max, skewed toward 0–1
+  const set = (i: number, t: Terrain, bridge?: Bridge) => { const max = RICH[t], richness = (max === 0 || rand() < 0.5) ? 0 : 1 + Math.floor(max * rand() ** 2); g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness, revealed: false, finds: [], equipment: [] }; };  // 0 vs 1+ is 50:50; within 1..max skewed toward 1 (max rare)
   const join = (a: number, b: number, k: EdgeKind) => { g[a][k] |= dirBit(a, b); g[b][k] |= dirBit(b, a); };   // lay one edge of link kind `k` (symmetric)
   const link = (a: number, b: number) => join(a, b, 'roads');         // road edge
   const linkP = (a: number, b: number) => join(a, b, 'paths');        // foot edge
@@ -146,7 +146,10 @@ function genOnce(seed: number) {
   const allRiver = [...river, ...branch];
   const dc = (i: number) => Math.abs(((i / N) | 0) - N / 2) + Math.abs((i % N) - N / 2);
   const centralRow = river.filter(i => { const r = (i / N) | 0; return r >= N / 3 && r <= 2 * N / 3; });   // pin the bridge to the centre quadrant
-  const ctr = (centralRow.length ? centralRow : river).slice().sort((a, b) => dc(a) - dc(b))[0];   // on the TRUNK (road gen assumes a vertical cut)
+  const notWater = (j: number) => !g[j] || g[j].terrain !== 'water';
+  const straightX = (i: number) => { const c = i % N; return c > 0 && c < N - 1 && notWater(i - 1) && notWater(i + 1); };   // land both sides → road crosses straight
+  const ctrPool = centralRow.filter(straightX);
+  const ctr = (ctrPool.length ? ctrPool : centralRow.length ? centralRow : river).slice().sort((a, b) => dc(a) - dc(b))[0];   // on the TRUNK, a straight road crossing where possible
   g[ctr].bridge = 'road'; const bridges = [ctr];
   const cand = allRiver.filter(i => i !== ctr);                    // exactly 2 foot crossings on random river tiles
   for (let k = 0; k < 2 && cand.length; k++) { const i = cand.splice(Math.floor(rand() * cand.length), 1)[0]; g[i].bridge = 'foot'; bridges.push(i); }
@@ -176,21 +179,28 @@ function genOnce(seed: number) {
     const k = 1 + (rand() < 0.5 ? 0 : 1);
     for (let n2 = 0; n2 < k && cand.length; n2++) block(i, cand.splice(Math.floor(rand() * cand.length), 1)[0]);
   }
-  // STATIC SIZE: keep ~ACTIVE_TILES cells in a round-robin blob grown from the centre bridge (water/roads always kept); void the rest of the land → consistent size, 15×15 spread, gaps
-  const passable = (a: number, b: number) => {                          // anticipates play connectivity: bridges connect, open water blocks
+  // BUILD OUT from the road + river network: keep the land hugging it (1-cell margin → no bare roads/rivers), then grow outward up to ACTIVE_TILES; void the rest
+  const passable = (a: number, b: number) => {                          // land/bridge connectivity; open water blocks (banks reached as seeds, not crossed)
     if (onBlocked(g, a, b) || isVoid(g[a]) || isVoid(g[b])) return false;
     if (g[a].bridge || g[b].bridge) return true;
     return !(plainRiver(g[a]) || plainRiver(g[b]));
   };
-  let fixed = 0; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'water' || g[i].roads !== 0 || g[i].bridge) fixed++;   // water + roads (overlay) + bridges are always kept
-  let budget = ACTIVE_TILES - fixed;
-  const keepLand = new Set<number>(), bq = [bridges[0]], bseen = new Set<number>([bridges[0]]);   // BFS = even round-robin growth from the centre
-  while (bq.length) {
-    const u = bq.shift()!;
-    if (isLand(u) && g[u].roads === 0 && budget > 0 && !keepLand.has(u)) { keepLand.add(u); budget--; }   // off-road land fills the budget
-    for (const v of nbrs(u)) if (!bseen.has(v) && passable(u, v)) { bseen.add(v); bq.push(v); }
-  }
+  const netSeeds: number[] = [];
+  for (let i = 0; i < N * N; i++) if (g[i].roads !== 0 || (isLand(i) && nbrs(i).some(j => g[j].terrain === 'water'))) netSeeds.push(i);   // road cells + river-bank land
+  const netDist = new Map<number, number>(); const nq = [...netSeeds]; for (const s of netSeeds) netDist.set(s, 0);
+  for (let qi = 0; qi < nq.length; qi++) { const u = nq[qi]; for (const v of nbrs(u)) if (!netDist.has(v) && passable(u, v)) { netDist.set(v, netDist.get(u)! + 1); nq.push(v); } }   // BFS order = nearest-to-network first
+  let fixed = 0; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'water' || g[i].roads !== 0 || g[i].bridge) fixed++;   // water + roads + bridges always kept
+  const keepLand = new Set<number>();
+  for (let i = 0; i < N * N; i++) if (isLand(i) && g[i].roads === 0 && nbrs(i).some(j => g[j].roads !== 0 || g[j].terrain === 'water')) keepLand.add(i);   // margin: every land cell hugging the network (no bare roads/rivers)
+  let budget = ACTIVE_TILES - fixed - keepLand.size;
+  for (const u of nq) { if (budget <= 0) break; if (isLand(u) && g[u].roads === 0 && !keepLand.has(u)) { keepLand.add(u); budget--; } }   // then build outward from the network (nearest-first) to the ACTIVE_TILES cap
   for (let i = 0; i < N * N; i++) if (isLand(i) && g[i].roads === 0 && !keepLand.has(i)) set(i, 'void');   // never void a road cell
+  // road ENDS point into the void: void the single cell just ahead of each road dead-end (no land token beyond)
+  for (let i = 0; i < N * N; i++) { const b = g[i].roads, r = (i / N) | 0, c = i % N;
+    let j = -1;                                                       // dead-end = exactly one road edge; ahead = opposite of it
+    if (b === 1 && r < N - 1) j = i + N; else if (b === 4 && r > 0) j = i - N; else if (b === 2 && c > 0) j = i - 1; else if (b === 8 && c < N - 1) j = i + 1;
+    if (j >= 0 && isLand(j) && g[j].roads === 0) set(j, 'void');
+  }
   // the BASE hub sits a few road-tiles out from the bridge (road-distance ≈ 3), not right beside it
   const bdist = new Map<number, number>([[bridges[0], 0]]); const bq2 = [bridges[0]];
   while (bq2.length) { const u = bq2.shift()!; const d = bdist.get(u)!; for (const v of nbrs(u)) if (!bdist.has(v) && (g[u].roads & dirBit(u, v))) { bdist.set(v, d + 1); bq2.push(v); } }
