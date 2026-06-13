@@ -90,11 +90,11 @@ function draw() {
 
 function renderHud(G: GState, ctx: any, legal: Action[]) {
   const cur = G.players[ctx.currentPlayer];
-  const phase = G.epilogue ? 'lab season' : `field turn ${ctx.turn}`;
-  const seat = human.has(ctx.currentPlayer) ? 'your move' : 'bot thinking…';
+  const phase = G.epilogue ? 'lab' : `T${ctx.turn}`;
+  const seat = human.has(ctx.currentPlayer) ? 'you' : 'bot…';
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
-    : `${phase} · Turn: P${ctx.currentPlayer} (${seat}) · ${cur.ap} AP left · 🌧 ${G.monsoon}/4`;
+    : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap}AP · 🌧${G.monsoon}/4`;
 
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';
