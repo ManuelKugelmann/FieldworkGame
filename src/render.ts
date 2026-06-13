@@ -45,6 +45,7 @@ const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#5d6e3a', wild: '#37512f', forest: '#21401d', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
 };
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
+const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R' };
@@ -180,11 +181,13 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0;
     if (c < G.cols - 1) {
+      if (t.rivers & 2) edge(cctx, i, i + 1, G, RIVER_LINE, 3, []);   // river channel (under road/path lines)
       if (t.roads & 2) edge(cctx, i, i + 1, G, '#9a8757', 3, []); else if (t.paths & 2) edge(cctx, i, i + 1, G, '#84a684', 1.5, [3, 3]);
       if (t.smallRivers & 2) edge(cctx, i, i + 1, G, BROOK_LINE, 2, [2, 2]);
       if (t.blocked & 2) borderBar(cctx, i, i + 1, G);
     }
     if (r < G.rows - 1) {
+      if (t.rivers & 4) edge(cctx, i, i + G.cols, G, RIVER_LINE, 3, []);
       if (t.roads & 4) edge(cctx, i, i + G.cols, G, '#9a8757', 3, []); else if (t.paths & 4) edge(cctx, i, i + G.cols, G, '#84a684', 1.5, [3, 3]);
       if (t.smallRivers & 4) edge(cctx, i, i + G.cols, G, BROOK_LINE, 2, [2, 2]);
       if (t.blocked & 4) borderBar(cctx, i, i + G.cols, G);

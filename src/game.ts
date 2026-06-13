@@ -9,7 +9,7 @@ export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base, remote
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile (droppable/pickup-able)
 export interface Equip { kind: EquipKind; }
 export interface Vehicle { pos: number; driver: string | null; }  // car: a positioned entity you board/leave; drive moves both
-export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; }  // roads/paths/smallRivers(brooks)/blocked(cliffs) = edge bitmasks N1 E2 S4 W8
+export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; rivers: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; }  // roads/paths/smallRivers(brooks)/blocked(cliffs)/rivers(channel linkage) = edge bitmasks N1 E2 S4 W8
 export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; gear: number; boat: boolean; }  // gear = catalogue-roll bonus; boat = carrying the shared boat (enables water crossing)
 export interface GState {
   players: Record<string, PlayerS>;
@@ -106,7 +106,7 @@ function compTerrain(map: Tile[], pred: (t: Tile) => boolean) {       // plain 4
 
 function genOnce(seed: number) {
   const rand = prng(seed), g: Tile[] = new Array(N * N).fill(null as any);
-  const set = (i: number, t: Terrain, bridge?: Bridge) => { g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, richness: RICH[t], revealed: false, finds: [], equipment: [] }; };
+  const set = (i: number, t: Terrain, bridge?: Bridge) => { g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness: RICH[t], revealed: false, finds: [], equipment: [] }; };
   const link = (a: number, b: number) => { g[a].roads |= dirBit(a, b); g[b].roads |= dirBit(b, a); };   // road edge
   const linkP = (a: number, b: number) => { g[a].paths |= dirBit(a, b); g[b].paths |= dirBit(b, a); };  // foot edge
   const linkS = (a: number, b: number) => { g[a].smallRivers |= dirBit(a, b); g[b].smallRivers |= dirBit(b, a); };  // brook edge (boat-only highway)
@@ -214,6 +214,9 @@ function genOnce(seed: number) {
     }
     if (len >= 2) brooksMade++;
   }
+
+  // RIVER LINKAGE: link adjacent water tiles into a channel (like roads); the unlinked water edges are the banks — gives the river an orientation
+  for (let i = 0; i < N * N; i++) if (g[i].terrain === 'water') for (const j of nbrs(i)) if (g[j].terrain === 'water') g[i].rivers |= dirBit(i, j);
 
   return { g, bridges, base };
 }
