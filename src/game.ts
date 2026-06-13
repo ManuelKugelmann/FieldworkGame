@@ -5,7 +5,7 @@ export type Terrain = 'grassland' | 'jungle' | 'rocky' | 'water' | 'void';  // r
 export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
-export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base, remote base (frontier hub), village (market)
+export type Hotspot = 'base' | 'remote' | 'village' | 'remoteVillage' | 'commStation';  // POIs: road base, frontier hub (remote), road market (village), jungle market (remote village), road publish station (comm station)
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile (droppable/pickup-able)
 export interface Equip { kind: EquipKind; }
 export interface Vehicle { pos: number; driver: string | null; }  // car: a positioned entity you board/leave; drive moves both
@@ -76,8 +76,8 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
   return 0;
 }
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
-const isHub = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // research+publish hubs (road base ≡ remote base)
-const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  // buy gear here (road-network services)
+const isHub = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote' || t.hotspot === 'commStation';  // research+publish hubs (base / frontier / comm station)
+const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' || t.hotspot === 'remoteVillage';  // buy gear here (base / road village / jungle remote village)
 
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
@@ -208,14 +208,14 @@ function genOnce(seed: number) {
   for (const [i, d] of bdist) if (g[i].roads !== 0 && !g[i].bridge) { const s = Math.abs(d - 3); if (s < bestS) { bestS = s; base = i; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
-  // FOOTPATHS: foot bridges link to land banks (boardable); seeds = foot bridges + road JUNCTIONS + hotspots; trails fizzle out anywhere
+  // FOOTPATH JUNCTIONS: trails seed from foot bridges, anywhere on the roads, and every special location; they fizzle out in the jungle
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
   for (const fb of footBr) for (const j of nbrs(fb)) if (g[j].terrain !== 'water' && g[j].terrain !== 'void' && !(g[fb].blocked & dirBit(fb, j))) linkP(fb, j);
-  const popc = (b: number) => (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1);
-  const seeds = [...footBr];
-  for (let i = 0; i < N * N; i++) if (popc(g[i].roads) >= 3 && !g[i].bridge) seeds.push(i);   // trails branch off road junctions (≥3 road edges)
-  for (const hs of ['base', 'village', 'remote'] as const) { const i = g.findIndex(t => t && t.hotspot === hs); if (i >= 0) seeds.push(i); }   // trails also leave the base, market & remote
-  for (const sd of seeds) {
+  const roadAll: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].roads !== 0) roadAll.push(i);
+  const junctions = [...footBr];
+  for (let k = 0; k < 5 && roadAll.length; k++) junctions.push(roadAll[Math.floor(rand() * roadAll.length)]);   // anywhere on the roads
+  for (let i = 0; i < N * N; i++) if (g[i].hotspot) junctions.push(i);   // every special location
+  for (const sd of junctions) {
     const o0 = nbrs(sd).filter(j => g[j].terrain === 'jungle' && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
     let i = o0[Math.floor(rand() * o0.length)]; linkP(sd, i);
     for (let s = 0; s < 4; s++) { const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }
@@ -265,10 +265,18 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   const allLand: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'jungle' && g[i].roads === 0) allLand.push(i);
   const dist = (a: number, b: number) => Math.abs(((a / N) | 0) - ((b / N) | 0)) + Math.abs((a % N) - (b % N));
   g[base].hotspot = 'base';                                        // main hub — on the road
+  const popc = (b: number) => (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1);
+  const free = (i: number | undefined) => i !== undefined && !g[i].hotspot;
+  const byFar = (arr: number[]) => arr.slice().sort((a, b) => dist(b, base) - dist(a, base));
   const rds = roads.filter(i => i !== base);                       // market sits MID-road, not at the far end
   const maxD = Math.max(0, ...rds.map(i => dist(i, base))), mid = maxD / 2;
-  g[rds.slice().sort((a, b) => Math.abs(dist(a, base) - mid) - Math.abs(dist(b, base) - mid))[0]].hotspot = 'village';   // road-reachable market, near the middle of the road
-  g[allLand.slice().sort((a, b) => dist(b, base) - dist(a, base))[0]].hotspot = 'remote';   // farthest frontier — may be isolated (reach by boat or skip)
+  const village = rds.slice().sort((a, b) => Math.abs(dist(a, base) - mid) - Math.abs(dist(b, base) - mid))[0];
+  if (free(village)) g[village].hotspot = 'village';              // road market, near the middle of the road
+  const station = rds.filter(i => free(i) && popc(g[i].roads) >= 3)[0] ?? byFar(rds.filter(free))[0];
+  if (free(station)) g[station].hotspot = 'commStation';         // comm station — a road junction (else far road): publish hub
+  if (free(byFar(allLand.filter(free))[0])) g[byFar(allLand.filter(free))[0]].hotspot = 'remote';   // farthest frontier — may be isolated (reach by boat or skip)
+  const rvillage = byFar(land.filter(free))[0];
+  if (free(rvillage)) g[rvillage].hotspot = 'remoteVillage';     // remote village — farthest REACHABLE jungle: a market in the wilds
   return true;
 }
 function generateMap(seed: number, dim: number): { map: Tile[]; start: number } {

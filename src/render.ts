@@ -56,7 +56,7 @@ const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const EQUIP_COLOR = '#cfd6c8';
-const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R' };
+const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R', remoteVillage: 'V', commStation: 'C' };
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
