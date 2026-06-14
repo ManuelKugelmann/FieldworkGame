@@ -11,38 +11,42 @@ A Euro action-point **logistics frame** wrapping a roguelite **push-your-luck fi
 
 ## Map (10×10, procedural, per-match seed)
 
-A **branching river system** carves the board:
-- **Trunk** — a vertical wandering channel (full barrier).
+A **branching river system** carves the board (no large open water — channels are **1 tile wide**):
+- **Trunk** — a vertical wandering channel (full barrier; crossable only by bridge or boat).
 - **Big branch** — a major fork off the trunk to an edge (full barrier).
-- **Thin side arms** — narrow offshoots that are *fordable on foot* and act as *boat highways*.
+- **Brooks** — narrow boat-only side-channels drawn as **edge overlays on land** (mouth at a river, linking consecutive land cells). "Paths, but for boats": **1 AP/step when boated**; on foot a brook is just terrain (ford at the normal terrain cost, no surcharge).
 
-Terrains: **road** (fast, sparse finds), **wild** (rich), **forest** (medium), **rocky** (passable, no finds), **water**.
+Everything that moves is an **edge link on a base tile** — four bitmasks (`N1 E2 S4 W8`): `roads`, `paths`, `smallRivers` (brooks), `blocked` (cliffs).
+
+Terrains (per-tile token count varies within a range; roads are an **edge overlay** on a land base, not their own terrain): **grassland** (fast 1-AP going, sparse finds), **jungle** (rich flora + fauna — `bot`/`zoo` heavy), **rocky** (geology-rich outcrops — lots of `geo`, mid `arch`), **water** (river — boat/bridge only), **void** (off-board gaps).
 
 **Crossings (organic):** exactly **1 central road bridge** (the only *defined* crossing — river cell nearest map centre, on the road network) + **2 foot bridges** on random river tiles. Some sections may end up **boat-only** or fully **isolated** — that's allowed; the play area simply shrinks.
 
-**Generation guarantees** (else reseed, up to 96×, then fail loudly): water is one connected body; the road is one network attached to the centre bridge; the **main hub sits on the road**; the base-reachable area has enough forage to play; no boat-unreachable rocky islands. Isolated pockets/hubs are acceptable.
+**Cliffs:** **1–2 random impassable edges** on some land tiles (`blocked` mask) — uncrossable by foot, car **or** boat. Placed only on plain land↔land edges so the road / water / footpath networks stay intact. This is the only enter/exit barrier (the old boat↔rocky-shore exit-block is gone).
+
+**Generation guarantees** (else reseed, up to 96×, then fail loudly): water is one connected body; the road is one network attached to the centre bridge; the **main hub sits on the road**; the base-reachable area has enough forage to play. Isolated pockets/hubs are acceptable.
 
 ---
 
 ## Movement (AP-budgeted; `START_AP = 4`)
 
 Edge-based on a weighted graph:
-- **On-path** (road or foot edge) **or arm↔arm** boat-highway = **1 AP**.
-- **Bushwhack / ford / open water** = **2 AP**.
+- **On-path** (road or foot edge) = **1 AP**; **bushwhack / ford** = **2 AP**.
+- **Boating** (carrying the boat): water tiles, brook edges and paths = **1 AP/step**; portaging the boat over dry land = 2 AP. `blocked` cliff edges stop everyone.
 
-Modes:
-- **Foot** — anywhere except plain main-river water (cross only at bridges).
-- **Car (`drive`)** — up to **3 road tiles per AP**, road edges only.
-- **Boat** — water is a costly overlay; **main-river↔rocky exit-block** (can't board/disembark at rocky banks). Thin arms are fordable (2 AP) and boat-fast (1 AP).
+Modes — gear, boat and car are all board **items**:
+- **Foot** — land only; **open water is impassable** without a boat (cross via bridges or boat).
+- **Car (`drive`)** — up to **3 road tiles per AP**, road edges only; a positioned `board`/`leave` entity, **not** inventoryable, usable only on the road network (roads + base/village).
+- **Boat** — a **carryable inventory item** (one shared boat, starts cached at base). **Carrying it = being boated**: you may enter water tiles and run brooks at boat-rate. Drop/pick it up on **any** tile (uniform with gear); a dropped boat caches there for another player to grab. Without the boat, water cannot be crossed.
 
-Validation uses a **dry graph** (river = hard barrier) so the centre crossing stays load-bearing; play uses the **wet graph** (boats included).
+Validation uses a **dry graph** (river = hard barrier) so the centre crossing stays load-bearing; the foot play graph likewise excludes water, so the base area must be reachable on foot/bridges.
 
 ---
 
 ## Core pipeline
 
 1. **Discover** — entering a tile reveals **finds** drawn from that terrain's **fixed, finite pool** (without replacement). Carry is capped at `CARRY_SLOTS = 4`.
-2. **Catalogue** — 1 AP + **2d6 ≥ `CATALOGUE_DC` (7)** (+ gear bonus). Success → a sample in your carry; failure → the find is lost (field attrition is the only failure).
+2. **Catalogue** — 1 AP + **2d6 ≥ `CATALOGUE_DC` (7)** (+ gear bonus). Outcome tiers: **≥ DC → collected** (sample in your carry); **= DC−1 → stayed** (just missed — the find remains for another attempt); **below → fled** (fauna escapes) or **destroyed** (everything else lost). Outcomes surface as **toasts** (success/fail/effect) in both frontends.
 3. **Publish (research)** — at a **hub** (or *anywhere* during the lab season): assemble a **set** from your owned samples; you may **cite at most `MAX_CITE` (1)** missing discovery from another player's published pool. Owned samples used move into **your published pool** (citable by others). Reward is **flat** — no citation penalty, no standalone bonus.
 
 **Patterns:** `triple` (3 of one discipline → 4 prestige / 2 money), `rainbow` (1 of each of the 4 disciplines → 7 / 3).
@@ -60,7 +64,7 @@ Validation uses a **dry graph** (river = hard barrier) so the centre crossing st
 ## Events (one deck, 1 draw/turn)
 
 Mostly benign (spare AP / money) with rare hazards:
-- **Rockslide** — mutates a wild/forest tile to rocky (loses its finds).
+- **Rockslide** — mutates a jungle tile to rocky (loses its finds).
 - **Washout** — severs a random crossing's edges (never the last intact one).
 - **Monsoon** — `MONSOON_END = 4` copies stacked at the deck **bottom**; as they surface the storm telegraphs, then the game enters the epilogue.
 

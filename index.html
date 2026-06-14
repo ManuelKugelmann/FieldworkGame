@@ -7,13 +7,16 @@
     <style>
       :root { color-scheme: dark; }
       body {
-        margin: 0; padding: 1.5rem;
-        background: #0b0f0a; color: #d6e4d0;
+        margin: 0; padding: .3rem 1.25rem 1.25rem;
+        background: #0b0f0a; color: #d6e4d0; border-top: 3px solid #c9962f;   /* amber = lean canvas viewer */
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .25rem; }
-      .sub { color: #6f8f70; font-size: .8rem; margin-bottom: 1rem; }
-      .controls { margin-bottom: 1rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+      h1 { font-size: .92rem; font-weight: 600; margin: 0; display: inline-block; }
+      .badge { font-size: .56rem; text-transform: uppercase; letter-spacing: .08em; padding: .1rem .35rem; border-radius: 3px; vertical-align: middle; margin-left: .4rem; background: #3a2f12; color: #e3b765; border: 1px solid #6b5320; }
+      .sub { color: #6f8f70; font-size: .72rem; margin: .15rem 0 .5rem; }
+      .controls { margin: .6rem 0 .35rem; display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+      .foot { margin: 1rem 0 0; font-size: .72rem; }
+      .built { font-size: .6rem; color: #4f6f50; margin-left: auto; }
       label.seat { font-size: .78rem; color: #9fc69a; display: inline-flex; gap: .3rem; align-items: center; }
       button {
         background: #16301a; color: #cfe9c8; border: 1px solid #2f5a34;
@@ -21,13 +24,17 @@
       }
       button:hover { background: #1d3d22; }
       button:disabled { opacity: .4; cursor: default; }
-      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; }
-      #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; }
-      .side { min-width: 16rem; max-width: 22rem; }
+      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+      @media (min-width: 760px) { .cols { flex-wrap: nowrap; } }   /* keep the stats beside the field, never wrapped below it */
+      .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+      .inspectwrap { width: 100%; max-width: 30rem; margin-top: .45rem; }
+      #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
+      .side { flex: 0 1 22rem; min-width: 16rem; max-width: 22rem; }
       .panel { margin-bottom: 1rem; }
       .panel h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
       #actions { display: flex; flex-wrap: wrap; gap: .4rem; }
       #actions button { padding: .35rem .6rem; font-size: .8rem; }
+      .bar-right { margin-left: auto; display: flex; gap: .4rem; flex-wrap: wrap; }   /* helilift + End turn pinned right */
       .pcard { font-size: .78rem; padding: .35rem .5rem; border: 1px solid #1d3d22; border-radius: 5px; margin-bottom: .35rem; }
       .pcard.cur { border-color: #c9b14a; background: #161306; }
       .pcard .who { font-weight: 600; }
@@ -37,30 +44,52 @@
       #log { max-height: 32vh; overflow: auto; font-size: .72rem; color: #9fc69a; }
       .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
       #status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; min-height: 1.2rem; }
+      .plan { display: flex; gap: .5rem; margin-bottom: .4rem; flex-wrap: wrap; justify-content: center; }
+      .pat { display: flex; align-items: center; gap: .35rem; padding: .18rem .5rem; border: 1px solid #1d3d22; border-radius: 5px; font-size: .74rem; color: #9fc69a; }
+      .pat.ready { border-color: #3a7a3f; background: #14301a; color: #bdebbd; }
+      .pat .nm { font-weight: 600; text-transform: capitalize; }
+      .pat .rw { opacity: .7; }
+      .pat .cells { display: inline-flex; gap: .12rem; }
+      .pat .cell.have { opacity: 1; }
+      .pat .cell.cite { opacity: .55; }                 /* fillable by citing another player */
+      .pat .cell.need { opacity: .2; filter: grayscale(1); }   /* still missing */
+      .pat .sw { display: inline-flex; align-items: center; justify-content: center; min-width: .8em; height: .8em; padding: 0 .05em; border-radius: 2px; vertical-align: middle; font-size: .6em; }   /* colour-axis slot (may hold a discipline icon for both-axes goals) */
+      .pat .thr { margin-left: .15rem; }
+      .pat .thr.i { filter: drop-shadow(0 0 2px #e0563a); }   /* imminent snipe */
+      .pat .thr.h { opacity: .65; }                            /* hidden colour race */
+      .toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: .35rem; align-items: center; z-index: 50; pointer-events: none; }
+      .toast { padding: .4rem .8rem; border-radius: 6px; font-size: .8rem; border: 1px solid #2f5a34; background: #16301a; color: #cfe9c8; box-shadow: 0 2px 10px rgba(0,0,0,.55); animation: toastIn .15s ease-out; }
+      .toast.good { border-color: #3a7a3f; background: #14301a; color: #bdebbd; }
+      .toast.bad { border-color: #8a4040; background: #311414; color: #ecbcbc; }
+      .toast.info { border-color: #3f5f86; background: #14202f; color: #bcd2ec; }
+      .toast.out { opacity: 0; transition: opacity .4s ease; }
+      @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
   </head>
   <body>
-    <h1>Expedition: Verdant Prime</h1>
-    <div class="sub">serverless boardgame.io build — click to play, bots fill the empty seats · <a href="bgio.html" style="color:#7ad07a">bgio inspector ↗</a></div>
-    <div class="controls">
-      <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
-      <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
-      <button id="hint">Bot: suggest move</button>
-      <button id="reset">New match</button>
-    </div>
+    <div id="toasts" class="toasts"></div>
+    <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span></h1>
     <div class="cols">
-      <div>
+      <div class="boardwrap">
+        <div id="plan" class="plan"></div>
         <canvas id="board"></canvas>
-        <div class="legend" id="legend"></div>
+        <div class="panel inspectwrap"><div id="inspect">hover a tile</div></div>
       </div>
       <div class="side">
         <div id="status"></div>
         <div class="panel"><h2>Players</h2><div id="players"></div></div>
         <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
-        <div class="panel"><h2>Inspect</h2><div id="inspect">hover a tile</div></div>
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
       </div>
     </div>
+    <div class="controls">
+      <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
+      <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
+      <button id="hint">Bot: suggest move</button>
+      <button id="reset">New match</button>
+      <span class="built" id="built"></span>
+    </div>
+    <div class="foot"><a href="bgio.html" style="color:#7ad07a">bgio player frontend + Debug Inspector ↗</a></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
