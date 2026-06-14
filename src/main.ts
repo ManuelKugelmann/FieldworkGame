@@ -104,8 +104,11 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
         : (c.icon ?? '·');
       return `<span class="cell ${c.state}">${inner}</span>`;
     }).join('');
+    const threat = pat.threat === 'imminent' ? '<span class="thr i" title="a rival can complete this — race!">🏃</span>'
+      : pat.threat === 'building' ? '<span class="thr b" title="a rival is collecting these disciplines">👀</span>'
+      : pat.threat === 'hidden' ? '<span class="thr h" title="colour goal — rivals\' colours are hidden, could be sniped">🎲</span>' : '';
     return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.label}</span>` +
-      `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${pat.ready ? ' ✓' : ''}</span>`;
+      `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${threat}${pat.ready ? ' ✓' : ''}</span>`;
   }).join('');
 
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {

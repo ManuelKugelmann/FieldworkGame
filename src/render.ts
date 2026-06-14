@@ -163,13 +163,14 @@ export function maskedChips(ds: Discovery[]): string {
 // Each project pins concrete values; discipline = icon, colour = swatch (both for both-axes projects). evalGoal() (in game.ts) is the single source of truth.
 export const DCOLOR = ['#e0563a', '#36a85a', '#e0c23a', '#a86ae0'];   // the 4 discovery colours (swatches in the planner / chips)
 export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; swatch?: string; }   // have = carried · cite = fillable from others' published · need = missing
-export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; }
+export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; threat: 'imminent' | 'building' | 'hidden' | 'none'; }
 
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   const owned = [...G.players[pid].samples, ...G.players[pid].stash];   // carry + banked stash counts toward planning
   const citable: Discovery[] = [];
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 
+  const opps = Object.keys(G.players).filter(id => id !== pid);
   return G.goals.map((goal: Pattern) => {
     const r = evalGoal(goal, owned, citable);
     const cells: PatternCell[] = r.slots.map(s => ({
@@ -177,7 +178,16 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
       icon: s.type !== undefined ? DTYPE_SYMBOL[s.type] : undefined,
       swatch: s.color !== undefined ? DCOLOR[s.color] : undefined,
     }));
-    return { name: goal.id, label: goal.label, reward: `+${goal.prestige}P +${goal.money}$`, cells, ready: r.ok };
+    // contention read — fair: only uses PUBLIC info. Discipline-only goals are readable from rivals' visible disciplines; any colour pin is unreadable (a blind snipe).
+    const need = goal.parts.reduce((s, p) => s + p.count, 0);
+    const discOnly = goal.parts.every(p => p.color === undefined);
+    let threat: PatternPreview['threat'] = discOnly ? 'none' : 'hidden';
+    if (discOnly) for (const oid of opps) {
+      const er = evalGoal(goal, [...G.players[oid].samples, ...G.players[oid].stash], []);   // colour irrelevant here, so this is exact & fair
+      if (er.ok) { threat = 'imminent'; break; }
+      if (er.slots.filter(s => s.state === 'have').length >= Math.ceil(need * 0.6)) threat = 'building';
+    }
+    return { name: goal.id, label: goal.label, reward: `+${goal.prestige}P +${goal.money}$`, cells, ready: r.ok, threat };
   });
 }
 
