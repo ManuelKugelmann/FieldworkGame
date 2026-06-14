@@ -439,7 +439,7 @@ const COL_NAME = ['red', 'green', 'gold', 'violet'];   // the 4 colours (match D
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
 const POOL_SIZE = 8;   // open research questions on the board at once
-export const publishCost = (pubs: number) => 1 + Math.floor(Math.max(0, pubs) / PUBLISH_STEP);   // each successive publish costs more AP → maximise value per publish (and a volume-leader self-handicaps)
+export const publishCost = (pubs: number) => Math.min(4, 1 + Math.floor(Math.max(0, pubs) / PUBLISH_STEP));   // each successive publish costs more AP (capped at 4 = one full turn) → maximise value per publish; a volume-leader self-handicaps but is never fully locked out
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
 export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
