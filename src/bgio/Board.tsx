@@ -119,7 +119,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
               const chips = (ds: typeof p.samples) => (id === seat ? sampleChips(ds) : maskedChips(ds));   // opponents' colours concealed
               return (
                 <div key={id} className={id === ctx.currentPlayer ? 'pcard cur' : 'pcard'}>
-                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>{driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} · {vp}pts · {p.prestige}P · {p.money}$ · g{p.gear} · <span dangerouslySetInnerHTML={{ __html: chips(p.samples) }} />{p.stash.length ? <> · <span style={{ opacity: 0.7 }}>stash</span> <span dangerouslySetInnerHTML={{ __html: chips(p.stash) }} /></> : null} · pub {p.published.length}
+                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>{driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} · {vp}pts · {p.prestige}P · {p.money}$ · g{p.gear} · <span dangerouslySetInnerHTML={{ __html: chips(p.samples) }} /> · pub {p.published.length}
                 </div>
               );
             })}

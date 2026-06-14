@@ -128,7 +128,8 @@ export function actionLabel(a: Action, tile: Tile, goals?: Pattern[]): string | 
   if (a.move === 'drop') return a.args?.[0] === 'boat' ? 'Drop boat' : 'Drop gear';
   if (a.move === 'pickup') return a.args?.[0] === 'boat' ? 'Pick up boat' : 'Pick up gear';
   if (a.move === 'helilift') return 'Helilift → base (−12$)';
-  if (a.move === 'stash') return 'Stash at base';
+  if (a.move === 'reclaim') { const d = tile.cache[a.args![0] as number]; return d ? `Take ${prettyFind(d)}` : null; }
+  if (a.move === 'discard') return null;   // dropping is done by clicking your own hand chip
   if (a.event === 'endTurn') return 'End turn';
   return null;
 }
@@ -146,12 +147,18 @@ export function describeTile(G: GState, i: number): string {
   if (gearN) bits.push(`${gearN} gear cached`);
   if (t.equipment.some(e => e.kind === 'boat')) bits.push('boat here');
   if (t.revealed && t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
+  if (t.cache.length) bits.push('dropped: ' + t.cache.map(prettyFind).join(' '));
   return bits.join(' · ');
 }
 
 export function sampleChips(ds: Discovery[]): string {
   if (!ds.length) return '<span style="opacity:.5">none</span>';
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
+}
+// your own hand, but each chip is clickable to DROP it (leaves it face-up on your tile)
+export function handChips(ds: Discovery[]): string {
+  if (!ds.length) return '<span style="opacity:.5">none</span>';
+  return ds.map((d, i) => `<span class="chip clk" data-discard="${i}" title="drop — leaves it here, face-up for anyone" style="color:${DTYPE_COLOR[d.type]};cursor:pointer">${prettyFind(d)}</span>`).join('');
 }
 // opponents see only the DISCIPLINE of your specimens, not the colour (a concealed poker hand)
 export function maskedChips(ds: Discovery[]): string {
@@ -166,7 +173,7 @@ export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; s
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; threat: 'imminent' | 'building' | 'hidden' | 'none'; }
 
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
-  const owned = [...G.players[pid].samples, ...G.players[pid].stash];   // carry + banked stash counts toward planning
+  const owned = G.players[pid].samples;   // your full concealed hand (inventory is unlimited)
   const citable: Discovery[] = [];
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 
@@ -183,7 +190,7 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
     const discOnly = goal.parts.every(p => p.color === undefined);
     let threat: PatternPreview['threat'] = discOnly ? 'none' : 'hidden';
     if (discOnly) for (const oid of opps) {
-      const er = evalGoal(goal, [...G.players[oid].samples, ...G.players[oid].stash], []);   // colour irrelevant here, so this is exact & fair
+      const er = evalGoal(goal, G.players[oid].samples, []);   // colour irrelevant here, so this is exact & fair
       if (er.ok) { threat = 'imminent'; break; }
       if (er.slots.filter(s => s.state === 'have').length >= Math.ceil(need * 0.6)) threat = 'building';
     }
@@ -286,6 +293,14 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
         cctx.fillStyle = GRAY_BIOME[t.terrain];
         cctx.beginPath(); cctx.arc(sx, sy, rr, 0, 7); cctx.fill();
       }
+    }
+    for (const dc of t.cache) {   // DROPPED discoveries: face-up, free to grab — drawn with a white ring to read as "left here"
+      if (s >= 8) break;
+      const sx = slots[s][0], sy = slots[s][1]; s++;
+      cctx.fillStyle = DTYPE_COLOR[dc.type];
+      cctx.beginPath(); cctx.arc(sx, sy, rrBig, 0, 7); cctx.fill();
+      cctx.lineWidth = 1.5; cctx.strokeStyle = '#e8f0e2'; cctx.stroke();   // white rim = dropped/grabbable
+      if (CELL >= 22) { cctx.font = `${rrBig * 1.7}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[dc.type], sx, sy + 0.5); }
     }
     for (const e of t.equipment) {   // cached items take the next free slots
       if (s >= 8) break;
