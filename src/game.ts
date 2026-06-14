@@ -23,7 +23,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 5, MONSOON_END = 4, MAX_CITE = 0, GEAR_MAX = 3, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2;  // MAX_CITE 0 = no citation (hands fully owned)  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP) — each publish slot costs more, so chase high-value targets (catch-up vs volume)  // CARRY_SLOTS 5 = a full house / flush fits  // FIND_CHANCE: each potential slot yields a discovery on reveal  // CAR_STEPS / BOAT_STEPS tiles per AP  // gear: +1 catalogue roll/level
+  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 5, MONSOON_END = 4, MAX_CITE = 0, GEAR_MAX = 3, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 1;  // MAX_CITE 0 = no citation (hands fully owned)  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP) — each publish slot costs more, so chase high-value targets (catch-up vs volume)  // CARRY_SLOTS 5 = a full house / flush fits  // FIND_CHANCE: each potential slot yields a discovery on reveal  // CAR_STEPS / BOAT_STEPS tiles per AP  // gear: +1 catalogue roll/level
 
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
@@ -466,18 +466,19 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   let n = 0; const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => ({ id: `g${n++}`, label, parts, prestige, money });
   const next = (t: DType) => DTYPES[(DTYPES.indexOf(t) + 1) % 4];
+  const half = <T>(a: T[]) => a.filter((_, i) => i % 2 === 0);   // ~half the premium variants → simple targets dominate the pool more
   const deck: Pattern[] = [
-    // attainable 3-card / 4-card bread-and-butter (the bulk of the pool)
-    ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 6, 2)),
-    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 6, 2)),
-    ...DTYPES.map(t => mk(`${t} + ${next(t)} two pair`, [{ count: 2, type: t }, { count: 2, type: next(t) }], 6, 2)),
-    // premium 5-card / both-axes (rarer, high value)
-    ...DTYPES.map(t => mk(`${t} full house`, [{ count: 3, type: t }, { count: 2, type: next(t) }], 8, 3)),
-    ...colors.map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], 8, 3)),
-    ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 8, 3)),
-    ...colors.map(c => mk(`${COL_NAME[c]} ${DTYPES[c % 4]} triple`, [{ count: 3, type: DTYPES[c % 4], color: c }], 7, 2)),   // both-axes
-    mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t })), 5, 2),
-    mk('colour straight', colors.map(c => ({ count: 1, color: c })), 5, 2),
+    // attainable 3-card / 4-card bread-and-butter — favoured (full set of each)
+    ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 4, 1)),
+    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 4, 1)),
+    ...DTYPES.map(t => mk(`${t} + ${next(t)} two pair`, [{ count: 2, type: t }, { count: 2, type: next(t) }], 4, 1)),
+    // premium 5-card / both-axes — only ~half as many copies, so they show up less often
+    ...half(DTYPES).map(t => mk(`${t} full house`, [{ count: 3, type: t }, { count: 2, type: next(t) }], 6, 2)),
+    ...half(colors).map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], 6, 2)),
+    ...half(DTYPES).map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 6, 2)),
+    ...half(colors).map(c => mk(`${COL_NAME[c]} ${DTYPES[c % 4]} triple`, [{ count: 3, type: DTYPES[c % 4], color: c }], 5, 2)),   // both-axes
+    mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t })), 4, 1),
+    mk('colour straight', colors.map(c => ({ count: 1, color: c })), 4, 1),
   ];
   return shuf(deck);
 }
@@ -635,8 +636,8 @@ export const enumerate = (G: GState, ctx: any) => {
 
 // ---- event deck: mostly benign; monsoon stacked at the BOTTOM = telegraphed end ----
 function buildDeck(seed: number): string[] {
-  const top = [...Array(10).fill('tailwind'), ...Array(6).fill('cache'), ...Array(4).fill('grant'),
-    ...Array(6).fill('calm'), ...Array(3).fill('rockslide'), ...Array(3).fill('washout')];  // 32 benign+hazard
+  const top = [...Array(15).fill('tailwind'), ...Array(9).fill('cache'), ...Array(6).fill('grant'),
+    ...Array(9).fill('calm'), ...Array(5).fill('rockslide'), ...Array(5).fill('washout')];  // 49 benign+hazard → longer field season
   let z = seed >>> 0; const rnd = () => (z = (z * 1664525 + 1013904223) >>> 0) / 2 ** 32;
   for (let i = top.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [top[i], top[j]] = [top[j], top[i]]; }
   return [...top, ...Array(6).fill('monsoon')];                       // drawn last (game ends at MONSOON_END)
