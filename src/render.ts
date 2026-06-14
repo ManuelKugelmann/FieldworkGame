@@ -153,6 +153,11 @@ export function sampleChips(ds: Discovery[]): string {
   if (!ds.length) return '<span style="opacity:.5">none</span>';
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
+// opponents see only the DISCIPLINE of your specimens, not the colour (a concealed poker hand)
+export function maskedChips(ds: Discovery[]): string {
+  if (!ds.length) return '<span style="opacity:.5">none</span>';
+  return ds.map(d => `<span class="chip" style="color:#8aa0b4">${DTYPE_SYMBOL[d.type]}<span style="opacity:.5">?</span></span>`).join('');
+}
 
 // ---- publish planner: the shared pool of open research projects + how close the current player is ----
 // Each project pins concrete values; discipline = icon, colour = swatch (both for both-axes projects). evalGoal() (in game.ts) is the single source of truth.

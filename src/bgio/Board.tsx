@@ -4,7 +4,7 @@ import { enumerate, botAction } from '../game';
 import type { GState } from '../game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, logToasts, prettyLog, type Action, type Toast,
+  actionLabel, describeTile, sampleChips, maskedChips, logToasts, prettyLog, type Action, type Toast,
 } from '../render';
 
 // bgio React board. Same shared renderer as the Canvas viewer (terrain, paths,
@@ -116,9 +116,10 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
             {Object.entries(G.players).map(([id, p]) => {
               const vp = p.prestige + Math.floor(p.money / 4);
               const driving = G.vehicles.some((v) => v.driver === id);
+              const chips = (ds: typeof p.samples) => (id === seat ? sampleChips(ds) : maskedChips(ds));   // opponents' colours concealed
               return (
                 <div key={id} className={id === ctx.currentPlayer ? 'pcard cur' : 'pcard'}>
-                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>{driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} · {vp}pts · {p.prestige}P · {p.money}$ · g{p.gear} · <span dangerouslySetInnerHTML={{ __html: sampleChips(p.samples) }} />{p.stash.length ? <> · <span style={{ opacity: 0.7 }}>stash</span> <span dangerouslySetInnerHTML={{ __html: sampleChips(p.stash) }} /></> : null} · pub {p.published.length}
+                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>{driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} · {vp}pts · {p.prestige}P · {p.money}$ · g{p.gear} · <span dangerouslySetInnerHTML={{ __html: chips(p.samples) }} />{p.stash.length ? <> · <span style={{ opacity: 0.7 }}>stash</span> <span dangerouslySetInnerHTML={{ __html: chips(p.stash) }} /></> : null} · pub {p.published.length}
                 </div>
               );
             })}

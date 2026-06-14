@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate, publishCost } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, logToasts, prettyLog, publishPreviews,
+  actionLabel, describeTile, sampleChips, maskedChips, logToasts, prettyLog, publishPreviews,
   type Action, type Toast,
 } from './render';
 
@@ -110,12 +110,13 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
 
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';
+    const mine = human.has(id);   // you only see colours of the seats you control; opponents' are concealed
     const vp = p.prestige + Math.floor(p.money / 4);
     const driving = G.vehicles.some(v => v.driver === id) ? ' 🚗' : '';
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
       ` ${vp} pts · ${p.prestige} prestige · ${p.money}$ · gear ${p.gear}<br>` +
-      `<span style="opacity:.7">carry:</span> ${sampleChips(p.samples)} ` +
-      `${p.stash.length ? `<span style="opacity:.7">stash:</span> ${sampleChips(p.stash)} ` : ''}` +
+      `<span style="opacity:.7">carry:</span> ${mine ? sampleChips(p.samples) : maskedChips(p.samples)} ` +
+      `${p.stash.length ? `<span style="opacity:.7">stash:</span> ${mine ? sampleChips(p.stash) : maskedChips(p.stash)} ` : ''}` +
       `<span style="opacity:.7">pub:</span> ${p.published.length}</div>`;
   }).join('');
 
