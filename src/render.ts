@@ -2,7 +2,7 @@
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
 import type { GState, Tile, Discovery, Pattern, GearItem, PlayerS, Vehicle } from './game';
-import { targetAP, evalGoal, GEAR_PRICE } from './game';
+import { targetAP, evalGoal, GEAR_PRICE, catDC } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -120,7 +120,7 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 
 // label for a non-spatial action button (move/drive are board clicks -> null)
 export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: PlayerS, car?: Vehicle): string | null {
-  if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)}` : null; }
+  if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)} (DC ${catDC(d.color)})` : null; }
   if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${g.label} (+${g.prestige}P)` : 'Publish'; }
   if (a.move === 'buy') { const k = a.args![0] as string, f = a.args![1] as Discovery['type'] | undefined;
     if (k === 'boat') return 'Buy boat (−5$)'; if (k === 'car') return 'Buy car (−8$)';
