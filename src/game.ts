@@ -33,6 +33,7 @@ export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries ar
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 export const catDC = (color: number) => CATALOGUE_DC + color;   // difficulty = colour tier: the number on a discovery (red 0 … violet 3) IS its catalogue DC (6–9)
+const DIFF_REWARD = 0.33;   // prestige premium per unit of pinned-colour difficulty a goal demands (so harder colours pay more)
 const gearTag = (g: GearItem) => g.kind === 'field' ? `${g.field} kit` : g.kind;   // log label for a gear kit
 const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more gear piece (discoveries are uncapped)
 
@@ -89,7 +90,16 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
   return 0;
 }
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
-const isHub = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote' || t.hotspot === 'commStation';  // research+publish hubs (base / frontier / comm station)
+const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'commStation';  // the TWO research sites: base lab + comm-station research centre. Each holds a SHARED, face-up open pool (tile.cache) — Texas Hold'em community cards.
+// the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
+const researchPool = (G: GState, pos: number): Discovery[] | null => G.epilogue ? G.map[G.base].cache : (isResearch(G.map[pos]) ? G.map[pos].cache : null);
+// entering a research site force-stashes your whole hand into that site's shared pool — open for ANY player's research, consumed when used
+function landAt(G: GState, cur: string) {
+  const p = G.players[cur], t = G.map[p.pos];
+  if (!G.epilogue && isResearch(t) && p.samples.length) {
+    t.cache.push(...p.samples); G.log.push(`P${cur} stash ${p.samples.length} → ${t.hotspot === 'base' ? 'lab' : 'research-ctr'} pool`); p.samples.length = 0;
+  }
+}
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' || t.hotspot === 'remoteVillage';  // buy gear here (base / road village / jungle remote village)
 
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
@@ -389,14 +399,14 @@ const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t);
   if (p.ap < c) return INVALID_MOVE;
   const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
-  p.ap -= c; p.pos = t; reveal(G, t, random);
+  p.ap -= c; p.pos = t; reveal(G, t, random); landAt(G, ctx.currentPlayer);
   G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' ⛵' : ''})`);
 };
 // generic link-ride: travel up to `steps` tiles along link `k` for 1 AP. car→roads, boat→river channel — same code, different prerequisite.
 function ride(G: GState, ctx: any, random: any, dest: number, from: number, steps: number, k: EdgeKind, allowed: boolean, arrive: () => void, log: string) {
   const p = G.players[ctx.currentPlayer];
   if (G.epilogue || p.ap < 1 || !allowed || !linkReach(G.map, from, steps, k).includes(dest)) return INVALID_MOVE;
-  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random);
+  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random); landAt(G, ctx.currentPlayer);
   G.log.push(log);
 }
 const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (player + car travel together)
@@ -458,18 +468,7 @@ const unstash: Move<GState> = ({ G, ctx }, i = 0) => {   // i = index into the c
   const g = car.trunk.splice(i, 1)[0].gear!; p.gear.push(g);
   G.log.push(`P${ctx.currentPlayer} take ${gearTag(g)} ← trunk`);
 };
-const discard: Move<GState> = ({ G, ctx }, i: number) => {   // drop a carried discovery face-up on this tile (open: colour revealed, free for anyone to grab)
-  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
-  if (G.epilogue || i < 0 || i >= p.samples.length) return INVALID_MOVE;
-  const d = p.samples.splice(i, 1)[0]; tile.cache.push(d);
-  G.log.push(`P${ctx.currentPlayer} drop ${d.type}${d.color}@${p.pos}`);
-};
-const reclaim: Move<GState> = ({ G, ctx }, i: number) => {   // pick up a dropped discovery from this tile (free, if under the carry cap)
-  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
-  if (G.epilogue || i < 0 || i >= tile.cache.length) return INVALID_MOVE;
-  const d = tile.cache.splice(i, 1)[0]; p.samples.push(d);
-  G.log.push(`P${ctx.currentPlayer} take ${d.type}${d.color}@${p.pos}`);
-};
+// (discoveries are NOT droppable — a carried hand only leaves you by being force-stashed at a research site, then consumed by research)
 
 // ---- research projects: a SHARED, CONSUMED pool of open questions (first to publish CLAIMS it; the pool refills from a per-match deck).
 // Poker grammar (discipline = rank, colour = suit) made CONCRETE: each project pins specific values, so two players can race the same question.
@@ -504,7 +503,11 @@ function assemble(G: GState, id: string, owned: Discovery[], citable: Discovery[
 function buildGoalDeck(rand: () => number): Pattern[] {
   const colors = Array.from({ length: COLORS }, (_, i) => i);
   const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  let n = 0; const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => ({ id: `g${n++}`, label, parts, prestige, money });
+  // reward reflects difficulty: a part pinned to colour c demands DC (6+c) finds, so add a premium for the hard colours it forces (free-colour parts → forage the easy red, no premium)
+  let n = 0; const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => {
+    const diff = parts.reduce((s, pt) => s + pt.count * (pt.color ?? 0), 0);
+    return { id: `g${n++}`, label, parts, prestige: prestige + Math.round(diff * DIFF_REWARD), money };
+  };
   const next = (t: DType) => DTYPES[(DTYPES.indexOf(t) + 1) % 4];
   const half = <T>(a: T[]) => a.filter((_, i) => i % 2 === 0);   // ~half the premium variants → simple targets dominate the pool more
   const deck: Pattern[] = [
@@ -535,18 +538,17 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
 };
 
-const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research+publish (hands fully owned; no citation)
-  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], apCost = publishCost(p.pubs);
-  if (p.ap < apCost || (!G.epilogue && !isHub(tile))) return INVALID_MOVE;   // lab season = publish anywhere; cost rises with publish count
+const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED open pool at this research site (or the lab pool in the epilogue)
+  const p = G.players[ctx.currentPlayer], apCost = publishCost(p.pubs), pool = researchPool(G, p.pos);
+  if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / comm station) — cost rises with publish count
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
-  const res = assemble(G, pat.id, p.samples, citablePool(G, ctx.currentPlayer)); if (!res) return INVALID_MOVE;
+  const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the open pool — anyone's stashed cards are fair game
   p.ap -= apCost;
-  const used = res.ownedIdx.map(i => p.samples[i]);
-  res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => p.samples.splice(i, 1));   // consume the used cards from your hand
-  p.published.push(...used);                                          // → your published pool (public; colours now visible)
-  const prestige = pat.prestige, money = pat.money;                  // flat — cited (≤1) is a top-up, no bonus or penalty
-  p.prestige += prestige; p.money += money; p.pubs += 1;             // research token → prestige; bump publish count (raises next publish's AP cost)
-  G.log.push(`publish ${pat.label}${res.cited ? ` (cited ${res.cited})` : ''} +${prestige}P +${money}$`);
+  const used = res.ownedIdx.map(i => pool[i]);
+  res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => pool.splice(i, 1));   // consume the used cards from the SHARED pool
+  p.published.push(...used);                                          // → your published pool (public record)
+  p.prestige += pat.prestige; p.money += pat.money; p.pubs += 1;     // research token → prestige; bump publish count (raises next publish's AP cost)
+  G.log.push(`publish ${pat.label} +${pat.prestige}P +${pat.money}$`);
   const gi = G.goals.findIndex(x => x.id === pat.id);                // CLAIM the question: remove it and refill the pool from the deck
   if (gi >= 0) { G.goals.splice(gi, 1); if (G.goalDeck.length) G.goals.push(G.goalDeck.shift()!); }
 };
@@ -594,8 +596,9 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
 // heuristic policy: publish at a hub; grab the boat when it unlocks water-bound forage; drive roads + boat water toward the goal
 export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
-  // publish at a hub — claim the most valuable open question you can complete (the FCFS research pool, not a carry cap, drives the race back)
-  if (p.ap >= publishCost(p.pubs) && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, p.samples, cit)) return { move: 'publish', args: [pat.id] };
+  // publish from the shared open pool at a research site — claim the most valuable open question the pool can complete (your hand was force-stashed here on arrival)
+  const pool = researchPool(G, p.pos);
+  if (pool && p.ap >= publishCost(p.pubs)) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, pool, [])) return { move: 'publish', args: [pat.id] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // invest spare money in gear: best affordable generic kit
     const buyable = (['g3', 'g2', 'g1'] as GearKind[]).find(k => p.money >= GEAR_PRICE[k] + 4);
@@ -613,9 +616,9 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     }
     return { move: 'catalogue', args: [bestI] };
   }
-  const hasHand = G.goals.some(g => assemble(G, g.id, p.samples, cit));   // holding a completable project → head to a hub to cash it; else forage
-  const goalPred = hasHand ? isHub : forageTarget;
-  if (!(hasHand && isHub(tile))) {
+  const hasHand = G.goals.some(g => assemble(G, g.id, p.samples, cit));   // hand completes a project → head to a research site to stash + cash it; else forage
+  const goalPred = hasHand ? isResearch : forageTarget;
+  if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
     const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
     const nx = stepToward(G, p.pos, goalPred, p.boat);                                      // foot/boat: weighted step toward the goal
@@ -647,7 +650,7 @@ const helilift: Move<GState> = ({ G, ctx }) => {   // airlift to the main hub; p
   const pay = Math.min(p.money, HELILIFT_COST); p.money -= pay;
   const neg = Math.ceil((HELILIFT_COST - pay) / 4);   // 4$ ≈ 1 prestige (matches money→VP rate)
   if (neg > 0) p.prestige -= neg;                      // negative-prestige tokens (reputation hit)
-  p.pos = G.base;
+  p.pos = G.base; landAt(G, ctx.currentPlayer);
   G.log.push(`helilift→base (-${pay}$${neg ? ` -${neg}P` : ''})`);
 };
 export const enumerate = (G: GState, ctx: any) => {
@@ -660,8 +663,6 @@ export const enumerate = (G: GState, ctx: any) => {
     G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));   // discoveries are uncapped in hand
-    p.samples.forEach((_, i) => out.push({ move: 'discard', args: [i] }));   // drop a carried card openly (free)
-    tile.cache.forEach((_, i) => out.push({ move: 'reclaim', args: [i] }));   // grab a dropped card
     if (isMarket(tile)) {   // buy a chosen gear kit / boat / car (selectable)
       if (p.gear.length < GEAR_MAX) {
         (['g1', 'g2', 'g3'] as GearKind[]).forEach(k => { if (p.money >= GEAR_PRICE[k]) out.push({ move: 'buy', args: [k] }); });
@@ -686,10 +687,8 @@ export const enumerate = (G: GState, ctx: any) => {
     }
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
-  if (p.ap >= publishCost(p.pubs) && (G.epilogue || isHub(tile))) {   // publish from your hand at a hub
-    const cit = citablePool(G, ctx.currentPlayer);
-    G.goals.forEach(pat => { if (assemble(G, pat.id, p.samples, cit)) out.push({ move: 'publish', args: [pat.id] }); });
-  }
+  const pool = researchPool(G, p.pos);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
+  if (pool && p.ap >= publishCost(p.pubs)) G.goals.forEach(pat => { if (assemble(G, pat.id, pool, [])) out.push({ move: 'publish', args: [pat.id] }); });
   out.push({ event: 'endTurn' });
   return out;
 };
@@ -744,12 +743,18 @@ export const Expedition: Game<GState> = {
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };
   },
-  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, stash, unstash, discard, reclaim },
+  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, stash, unstash },
   turn: {
     onBegin: ({ G, ctx, random }) => {
       if (!G.epilogue) {
         const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer);   // field season: 1 event/turn
-        if (G.monsoon >= MONSOON_END || !G.events.length) { G.epilogue = true; G.labLeft = ctx.numPlayers; G.log.push('🌧️ monsoon — indoor lab season'); }
+        if (G.monsoon >= MONSOON_END || !G.events.length) {
+          G.epilogue = true; G.labLeft = ctx.numPlayers;
+          const lab = G.map[G.base].cache;   // lab season: every hand + the comm-station pool all consolidate into the base lab pool
+          for (const id in G.players) { const pl = G.players[id]; if (pl.samples.length) { lab.push(...pl.samples); pl.samples.length = 0; } }
+          G.map.forEach(t => { if (t.hotspot === 'commStation' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
+          G.log.push('🌧️ monsoon — indoor lab season');
+        }
       }
       G.players[ctx.currentPlayer].ap = START_AP;        // refill (field AP, or lab-research AP)
     },

@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate, publishCost, GEAR_MAX } from './game'
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, maskedChips, handChips, gearChips, emptySlots, logToasts, prettyLog, publishPreviews,
+  actionLabel, describeTile, sampleChips, maskedChips, gearChips, emptySlots, logToasts, prettyLog, publishPreviews,
   type Action, type Toast,
 } from './render';
 
@@ -114,10 +114,9 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';
     const mine = human.has(id);   // you only see colours of the seats you control; opponents' are concealed
-    const canDrop = mine && id === ctx.currentPlayer && !ctx.gameover;   // drop on your own turn
     const vp = p.prestige + Math.floor(p.money / 4);
     const driving = G.vehicles.some(v => v.driver === id) ? ' 🚗' : '';
-    const specimens = canDrop ? handChips(p.samples) : mine ? sampleChips(p.samples) : maskedChips(p.samples);
+    const specimens = mine ? sampleChips(p.samples) : maskedChips(p.samples);   // your in-transit hand (not droppable; force-stashed at a research site)
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
       ` ${vp} pts · ${p.prestige} prestige · ${p.money}$<br>` +
@@ -169,11 +168,6 @@ canvas.addEventListener('click', e => {
   if (a) dispatch(a);
 });
 
-$('players').addEventListener('click', e => {   // click a card in your own hand to drop it (open)
-  const chip = (e.target as HTMLElement).closest('.chip[data-discard]') as HTMLElement | null;
-  const s = client.getState(); if (!chip || !s || s.ctx.gameover || !human.has(s.ctx.currentPlayer)) return;
-  dispatch({ move: 'discard', args: [Number(chip.dataset.discard)] });
-});
 $('reset').addEventListener('click', () => { stopBot(); client.reset(); hover = -1; scheduleBot(); draw(); });
 $('hint').addEventListener('click', () => {
   const s = client.getState(); if (!s || s.ctx.gameover || !human.has(s.ctx.currentPlayer)) return;

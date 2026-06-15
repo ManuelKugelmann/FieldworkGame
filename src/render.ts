@@ -146,13 +146,14 @@ export function describeTile(G: GState, i: number): string {
   if (t.hotspot) bits.push(t.hotspot);
   if (t.smallRivers) bits.push('brook');
   if (t.blocked) bits.push('cliff edge');
-  if (i === G.base) bits.push('lab stash');
+  const research = t.hotspot === 'base' || t.hotspot === 'commStation';
   const cars = G.vehicles.filter(v => v.pos === i);
   for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `car (P${car.driver})` : 'car (empty)') + tr); }
   const items = t.equipment.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!));
   if (items.length) bits.push('items: ' + items.join(' '));
   if (t.revealed && t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
-  if (t.cache.length) bits.push('dropped: ' + t.cache.map(prettyFind).join(' '));
+  if (t.cache.length) bits.push((research ? 'open pool: ' : 'dropped: ') + t.cache.map(prettyFind).join(' '));
+  else if (research) bits.push('open pool: (empty)');
   return bits.join(' · ');
 }
 
