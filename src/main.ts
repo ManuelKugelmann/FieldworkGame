@@ -1,5 +1,5 @@
 import { Client } from 'boardgame.io/client';
-import { Expedition, botAction, enumerate, publishCost } from './game';
+import { Expedition, botAction, enumerate, publishCost, GEAR_MAX } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
@@ -118,7 +118,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const vp = p.prestige + Math.floor(p.money / 4);
     const driving = G.vehicles.some(v => v.driver === id) ? ' 🚗' : '';
     const specimens = canDrop ? handChips(p.samples) : mine ? sampleChips(p.samples) : maskedChips(p.samples);
-    const empties = emptySlots(6 - p.samples.length - p.gear.length);   // CARRY_SLOTS = 6 (specimens + gear)
+    const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
       ` ${vp} pts · ${p.prestige} prestige · ${p.money}$<br>` +
       `<span style="opacity:.7">inv:</span> ${specimens}${gearChips(p.gear)}${empties} ` +
