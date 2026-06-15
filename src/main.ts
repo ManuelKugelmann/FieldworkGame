@@ -132,9 +132,10 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const tile = G.map[cur.pos];
     // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
     const pubAP = publishCost(cur.pubs);   // publish AP cost rises with each publish
-    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile, G.goals) })).filter((x): x is { a: Action; label: string } => x.label !== null)
+    const carHere = G.vehicles.find(v => v.pos === cur.pos);
+    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile, G.goals, cur, carHere) })).filter((x): x is { a: Action; label: string } => x.label !== null)
       .map(x => x.a.move === 'publish' ? { ...x, label: `${x.label} · ${pubAP}AP` } : x);
-    const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6 };
+    const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6, stash: 7, unstash: 8 };
     const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
     const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';
     labeled.sort((p, q) => rank(p.a) - rank(q.a));
