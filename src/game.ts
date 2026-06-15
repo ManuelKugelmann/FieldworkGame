@@ -9,8 +9,11 @@ export type Hotspot = 'base' | 'remote' | 'village' | 'remoteVillage' | 'commSta
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile (droppable/pickup-able)
 export interface Equip { kind: EquipKind; }
 export interface Vehicle { pos: number; driver: string | null; }  // car: a positioned entity you board/leave; drive moves both
+// GEAR: typed kit that shares the carry slots with specimens. generic g1/g2/g3 = +1/+2/+3 to every catalogue roll; a FIELD kit = bigger bonus but only for its discipline.
+export type GearKind = 'g1' | 'g2' | 'g3' | 'field';
+export interface GearItem { kind: GearKind; field?: DType; }   // field = the discipline a 'field' kit boosts
 export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; rivers: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; cache: Discovery[]; }  // cache = discoveries DROPPED here (face-up, free to pick up); roads/paths/smallRivers(brooks)/blocked(cliffs)/rivers(channel linkage) = edge bitmasks N1 E2 S4 W8
-export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; gear: number; boat: boolean; }  // samples = your concealed hand (unlimited); pubs = publish count (drives rising AP cost); gear = catalogue-roll bonus; boat = carrying the shared boat
+export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; gear: GearItem[]; boat: boolean; }  // samples + gear share the carry slots; pubs = publish count (drives rising AP cost); boat = carrying the shared boat
 export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
@@ -23,7 +26,12 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 6, MONSOON_END = 4, MAX_CITE = 0, GEAR_MAX = 3, GEAR_COST = 5, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2;  // CARRY_SLOTS 6 = hold a 5-card hand + 1 to swap; drop the rest openly  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP) — chase high-value targets  // FIND_CHANCE: each potential slot yields a discovery on reveal  // gear: +1 catalogue roll/level
+  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 6, MONSOON_END = 4, MAX_CITE = 0, GEAR_MAX = 3, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3;  // CARRY_SLOTS 6 = specimens + gear share these slots  // GEAR_MAX = max gear pieces carried  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+
+// gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
+export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
+export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
+const slotsUsed = (p: PlayerS) => p.samples.length + p.gear.length;   // specimens + gear share the carry slots
 
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
@@ -408,21 +416,17 @@ const leave: Move<GState> = ({ G, ctx }) => {   // step out; the car stays where
   car.driver = null;
   G.log.push(`P${ctx.currentPlayer} leave car@${car.pos}`);
 };
-const drop: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // cache a carried item on the current tile (free)
+const drop: Move<GState> = ({ G, ctx }, kind: EquipKind = 'boat') => {   // cache the boat on the current tile (free)
   const p = G.players[ctx.currentPlayer];
-  if (G.epilogue) return INVALID_MOVE;
-  if (kind === 'boat') { if (!p.boat) return INVALID_MOVE; p.boat = false; }
-  else { if (p.gear < 1) return INVALID_MOVE; p.gear -= 1; }
-  G.map[p.pos].equipment.push({ kind });
-  G.log.push(`P${ctx.currentPlayer} drop ${kind}@${p.pos}`);
+  if (G.epilogue || kind !== 'boat' || !p.boat) return INVALID_MOVE;
+  p.boat = false; G.map[p.pos].equipment.push({ kind: 'boat' });
+  G.log.push(`P${ctx.currentPlayer} drop boat@${p.pos}`);
 };
-const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'gear') => {   // reclaim a cached item from the current tile (free)
-  const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, idx = eq.findIndex(e => e.kind === kind);
-  if (G.epilogue || idx < 0) return INVALID_MOVE;
-  if (kind === 'boat') { if (p.boat) return INVALID_MOVE; p.boat = true; }   // one boat per player
-  else { if (p.gear >= GEAR_MAX) return INVALID_MOVE; p.gear += 1; }
-  eq.splice(idx, 1);
-  G.log.push(`P${ctx.currentPlayer} pickup ${kind}@${p.pos}`);
+const pickup: Move<GState> = ({ G, ctx }, kind: EquipKind = 'boat') => {   // reclaim the boat from the current tile (free)
+  const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, idx = eq.findIndex(e => e.kind === 'boat');
+  if (G.epilogue || kind !== 'boat' || idx < 0 || p.boat) return INVALID_MOVE;
+  p.boat = true; eq.splice(idx, 1);
+  G.log.push(`P${ctx.currentPlayer} pickup boat@${p.pos}`);
 };
 const discard: Move<GState> = ({ G, ctx }, i: number) => {   // drop a carried discovery face-up on this tile (open: colour revealed, free for anyone to grab)
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
@@ -492,10 +496,10 @@ const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; 
 
 const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
-  if (G.epilogue || p.ap < 1 || !tile.revealed || find < 0 || find >= tile.finds.length || p.samples.length >= CARRY_SLOTS) return INVALID_MOVE;  // carry cap (drop a card to make room)
+  if (G.epilogue || p.ap < 1 || !tile.revealed || find < 0 || find >= tile.finds.length || slotsUsed(p) >= CARRY_SLOTS) return INVALID_MOVE;  // carry cap (specimens + gear) — drop something to make room
   p.ap -= 1;
-  const roll = random.D6() + random.D6() + p.gear;   // gear steadies the dice
   const d = tile.finds[find], tag = `${d.type}${d.color}`;
+  const roll = random.D6() + random.D6() + gearBonus(p.gear, d.type);   // gear steadies the dice (field kit only for its discipline)
   if (roll >= CATALOGUE_DC) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll} ✓ collected`); }
   else if (roll >= CATALOGUE_DC - 2) G.log.push(`catalogue ${tag} ${roll} ◦ stayed`);   // a near miss (within 2) leaves the find for another attempt — fewer rolls destroy it
   else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
@@ -563,7 +567,10 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   // publish at a hub — claim the most valuable open question you can complete (the carry cap limits volume naturally)
   if (p.ap >= publishCost(p.pubs) && (G.epilogue || isHub(tile))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, p.samples, cit)) return { move: 'publish', args: [pat.id] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
-  if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) return { move: 'buy', args: [] };  // invest spare money (free action)
+  if (isMarket(tile) && p.gear.length < GEAR_MAX && slotsUsed(p) < CARRY_SLOTS) {   // invest spare money in gear: best affordable generic kit (keeps a slot free for specimens)
+    const buyable = (['g3', 'g2', 'g1'] as GearKind[]).find(k => p.money >= GEAR_PRICE[k] + 4 && slotsUsed(p) < CARRY_SLOTS - 1);
+    if (buyable) return { move: 'buy', args: [buyable] };
+  }
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
   if (p.samples.length >= CARRY_SLOTS && tile.finds.length) {   // full + a fresh find here → drop a carried card no open project wants, to free a slot
@@ -596,11 +603,12 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   return { event: 'endTurn' };
 }
 
-const buy: Move<GState> = ({ G, ctx }) => {                          // upgrade gear at a market (money → catalogue capability) — free action, no AP
-  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
-  if (G.epilogue || !isMarket(tile) || p.gear >= GEAR_MAX || p.money < GEAR_COST) return INVALID_MOVE;
-  p.money -= GEAR_COST; p.gear += 1;
-  G.log.push(`buy gear L${p.gear} (-${GEAR_COST}$)`);
+const buy: Move<GState> = ({ G, ctx }, kind: GearKind = 'g1', field?: DType) => {   // buy a chosen gear kit at a market (free action, no AP); takes a carry slot
+  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], price = GEAR_PRICE[kind];
+  if (G.epilogue || !isMarket(tile) || p.gear.length >= GEAR_MAX || slotsUsed(p) >= CARRY_SLOTS || p.money < price) return INVALID_MOVE;
+  if (kind === 'field' && !field) return INVALID_MOVE;
+  p.money -= price; p.gear.push(kind === 'field' ? { kind, field } : { kind });
+  G.log.push(`buy ${kind === 'field' ? `${field} kit` : kind} (-${price}$)`);
 };
 const helilift: Move<GState> = ({ G, ctx }) => {   // airlift to the main hub; pay cash, cover any shortfall with negative-prestige tokens
   const p = G.players[ctx.currentPlayer];
@@ -622,13 +630,15 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.ap >= 1 && p.boat) riverReach(G.map, p.pos, BOAT_STEPS).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
     G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
-    if (p.ap >= 1 && p.samples.length < CARRY_SLOTS) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));
+    const room = slotsUsed(p) < CARRY_SLOTS;
+    if (p.ap >= 1 && room) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));
     p.samples.forEach((_, i) => out.push({ move: 'discard', args: [i] }));   // drop a carried card openly (free)
-    if (p.samples.length < CARRY_SLOTS) tile.cache.forEach((_, i) => out.push({ move: 'reclaim', args: [i] }));   // grab a dropped card
-    if (isMarket(tile) && p.gear < GEAR_MAX && p.money >= GEAR_COST) out.push({ move: 'buy', args: [] });   // free action (no AP)
-    if (p.gear >= 1) out.push({ move: 'drop', args: ['gear'] });
+    if (room) tile.cache.forEach((_, i) => out.push({ move: 'reclaim', args: [i] }));   // grab a dropped card
+    if (isMarket(tile) && p.gear.length < GEAR_MAX && room) {   // buy a chosen gear kit (selectable)
+      (['g1', 'g2', 'g3'] as GearKind[]).forEach(k => { if (p.money >= GEAR_PRICE[k]) out.push({ move: 'buy', args: [k] }); });
+      if (p.money >= GEAR_PRICE.field) DTYPES.forEach(t => out.push({ move: 'buy', args: ['field', t] }));
+    }
     if (p.boat) out.push({ move: 'drop', args: ['boat'] });
-    if (tile.equipment.some(e => e.kind === 'gear') && p.gear < GEAR_MAX) out.push({ move: 'pickup', args: ['gear'] });
     if (tile.equipment.some(e => e.kind === 'boat') && !p.boat) out.push({ move: 'pickup', args: ['boat'] });
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
@@ -682,7 +692,7 @@ export const Expedition: Game<GState> = {
     map[start].equipment.push({ kind: 'boat' });   // one shared boat, cached at base (pick it up to cross water)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
-        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: 0, boat: false }])),
+        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: [{ pos: start, driver: null }],   // one shared car parked at base
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand) },

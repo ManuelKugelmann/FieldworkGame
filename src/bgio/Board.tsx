@@ -4,7 +4,7 @@ import { enumerate, botAction } from '../game';
 import type { GState } from '../game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, maskedChips, logToasts, prettyLog, type Action, type Toast,
+  actionLabel, describeTile, sampleChips, maskedChips, gearChips, emptySlots, logToasts, prettyLog, type Action, type Toast,
 } from '../render';
 
 // bgio React board. Same shared renderer as the Canvas viewer (terrain, paths,
@@ -119,7 +119,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
               const chips = (ds: typeof p.samples) => (id === seat ? sampleChips(ds) : maskedChips(ds));   // opponents' colours concealed
               return (
                 <div key={id} className={id === ctx.currentPlayer ? 'pcard cur' : 'pcard'}>
-                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>{driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} · {vp}pts · {p.prestige}P · {p.money}$ · g{p.gear} · <span dangerouslySetInnerHTML={{ __html: chips(p.samples) }} /> · pub {p.published.length}
+                  <span className="who" style={{ color: PLAYER_COLOR[+id % 4] }}>P{id}</span>{driving ? ' 🚗' : ''}{p.boat ? ' ⛵' : ''} · {vp}pts · {p.prestige}P · {p.money}$ · <span dangerouslySetInnerHTML={{ __html: chips(p.samples) + gearChips(p.gear) + emptySlots(6 - p.samples.length - p.gear.length) }} /> · pub {p.published.length}
                 </div>
               );
             })}

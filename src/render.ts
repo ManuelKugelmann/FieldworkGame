@@ -1,8 +1,8 @@
 // Shared board rendering + small UI helpers, used by BOTH frontends (the lean
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
-import type { GState, Tile, Discovery, Pattern } from './game';
-import { targetAP, evalGoal } from './game';
+import type { GState, Tile, Discovery, Pattern, GearItem } from './game';
+import { targetAP, evalGoal, GEAR_PRICE } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -122,11 +122,11 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 export function actionLabel(a: Action, tile: Tile, goals?: Pattern[]): string | null {
   if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)}` : null; }
   if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${g.label} (+${g.prestige}P)` : 'Publish'; }
-  if (a.move === 'buy') return 'Buy gear (−5$)';
+  if (a.move === 'buy') { const k = a.args![0] as GearItem['kind']; const f = a.args![1] as Discovery['type'] | undefined; return k === 'field' ? `Buy ${DTYPE_SYMBOL[f!]} kit (−${GEAR_PRICE.field}$)` : `Buy 🔧+${k[1]} (−${GEAR_PRICE[k]}$)`; }
   if (a.move === 'board') return 'Board car';
   if (a.move === 'leave') return 'Leave car';
-  if (a.move === 'drop') return a.args?.[0] === 'boat' ? 'Drop boat' : 'Drop gear';
-  if (a.move === 'pickup') return a.args?.[0] === 'boat' ? 'Pick up boat' : 'Pick up gear';
+  if (a.move === 'drop') return 'Drop boat';
+  if (a.move === 'pickup') return 'Pick up boat';
   if (a.move === 'helilift') return 'Helilift → base (−12$)';
   if (a.move === 'reclaim') { const d = tile.cache[a.args![0] as number]; return d ? `Take ${prettyFind(d)}` : null; }
   if (a.move === 'discard') return null;   // dropping is done by clicking your own hand chip
@@ -143,8 +143,6 @@ export function describeTile(G: GState, i: number): string {
   if (t.blocked) bits.push('cliff edge');
   const car = G.vehicles.find(v => v.pos === i);
   if (car) bits.push(car.driver !== null ? `car (P${car.driver})` : 'car (empty)');
-  const gearN = t.equipment.filter(e => e.kind === 'gear').length;
-  if (gearN) bits.push(`${gearN} gear cached`);
   if (t.equipment.some(e => e.kind === 'boat')) bits.push('boat here');
   if (t.revealed && t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
   if (t.cache.length) bits.push('dropped: ' + t.cache.map(prettyFind).join(' '));
@@ -155,6 +153,12 @@ export function sampleChips(ds: Discovery[]): string {
   if (!ds.length) return '<span style="opacity:.5">none</span>';
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
+// gear kit icons (public — opponents see your gear). 🔧+N = generic; 🔬 + discipline = field kit
+export const gearIcon = (g: GearItem) => g.kind === 'field' ? `🔬${DTYPE_SYMBOL[g.field!]}` : `🔧${g.kind[1]}`;
+export function gearChips(gear: GearItem[]): string {
+  return gear.map(g => `<span class="chip gear" title="${g.kind === 'field' ? `${g.field} field kit` : `+${g.kind[1]} to every catalogue`}">${gearIcon(g)}</span>`).join('');
+}
+export const emptySlots = (n: number) => '<span class="slot empty"></span>'.repeat(Math.max(0, n));
 // your own hand, but each chip is clickable to DROP it (leaves it face-up on your tile)
 export function handChips(ds: Discovery[]): string {
   if (!ds.length) return '<span style="opacity:.5">none</span>';

@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate, publishCost } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, maskedChips, handChips, logToasts, prettyLog, publishPreviews,
+  actionLabel, describeTile, sampleChips, maskedChips, handChips, gearChips, emptySlots, logToasts, prettyLog, publishPreviews,
   type Action, type Toast,
 } from './render';
 
@@ -117,9 +117,11 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const canDrop = mine && id === ctx.currentPlayer && !ctx.gameover;   // drop on your own turn
     const vp = p.prestige + Math.floor(p.money / 4);
     const driving = G.vehicles.some(v => v.driver === id) ? ' 🚗' : '';
+    const specimens = canDrop ? handChips(p.samples) : mine ? sampleChips(p.samples) : maskedChips(p.samples);
+    const empties = emptySlots(6 - p.samples.length - p.gear.length);   // CARRY_SLOTS = 6 (specimens + gear)
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
-      ` ${vp} pts · ${p.prestige} prestige · ${p.money}$ · gear ${p.gear}<br>` +
-      `<span style="opacity:.7">hand:</span> ${canDrop ? handChips(p.samples) : mine ? sampleChips(p.samples) : maskedChips(p.samples)} ` +
+      ` ${vp} pts · ${p.prestige} prestige · ${p.money}$<br>` +
+      `<span style="opacity:.7">inv:</span> ${specimens}${gearChips(p.gear)}${empties} ` +
       `<span style="opacity:.7">pub:</span> ${p.published.length}</div>`;
   }).join('');
 
