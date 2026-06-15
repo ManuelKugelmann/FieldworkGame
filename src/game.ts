@@ -26,7 +26,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 6, MONSOON_END = 4, MAX_CITE = 0, GEAR_MAX = 3, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3;  // CARRY_SLOTS 6 = specimens + gear share these slots  // GEAR_MAX = max gear pieces carried  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+  COLORS = 4, CATALOGUE_DC = 7, MAP_SEED = 1, CARRY_SLOTS = 6, MONSOON_END = 4, MAX_CITE = 0, GEAR_MAX = 3, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8;  // CARRY_SLOTS 6 = specimens + gear share these slots  // GEAR_MAX = max gear pieces carried  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
@@ -603,9 +603,13 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   return { event: 'endTurn' };
 }
 
-const buy: Move<GState> = ({ G, ctx }, kind: GearKind = 'g1', field?: DType) => {   // buy a chosen gear kit at a market (free action, no AP); takes a carry slot
-  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], price = GEAR_PRICE[kind];
-  if (G.epilogue || !isMarket(tile) || p.gear.length >= GEAR_MAX || slotsUsed(p) >= CARRY_SLOTS || p.money < price) return INVALID_MOVE;
+const buy: Move<GState> = ({ G, ctx }, kind: GearKind | 'boat' | 'car' = 'g1', field?: DType) => {   // buy a kit / boat / car at a market (free action, no AP)
+  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
+  if (G.epilogue || !isMarket(tile)) return INVALID_MOVE;
+  if (kind === 'boat') { if (p.boat || p.money < BOAT_PRICE) return INVALID_MOVE; p.money -= BOAT_PRICE; p.boat = true; G.log.push(`buy boat (-${BOAT_PRICE}$)`); return; }
+  if (kind === 'car') { if (p.money < CAR_PRICE) return INVALID_MOVE; p.money -= CAR_PRICE; G.vehicles.push({ pos: p.pos, driver: null }); G.log.push(`buy car@${p.pos} (-${CAR_PRICE}$)`); return; }
+  const price = GEAR_PRICE[kind];
+  if (p.gear.length >= GEAR_MAX || slotsUsed(p) >= CARRY_SLOTS || p.money < price) return INVALID_MOVE;
   if (kind === 'field' && !field) return INVALID_MOVE;
   p.money -= price; p.gear.push(kind === 'field' ? { kind, field } : { kind });
   G.log.push(`buy ${kind === 'field' ? `${field} kit` : kind} (-${price}$)`);
@@ -634,9 +638,13 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.ap >= 1 && room) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));
     p.samples.forEach((_, i) => out.push({ move: 'discard', args: [i] }));   // drop a carried card openly (free)
     if (room) tile.cache.forEach((_, i) => out.push({ move: 'reclaim', args: [i] }));   // grab a dropped card
-    if (isMarket(tile) && p.gear.length < GEAR_MAX && room) {   // buy a chosen gear kit (selectable)
-      (['g1', 'g2', 'g3'] as GearKind[]).forEach(k => { if (p.money >= GEAR_PRICE[k]) out.push({ move: 'buy', args: [k] }); });
-      if (p.money >= GEAR_PRICE.field) DTYPES.forEach(t => out.push({ move: 'buy', args: ['field', t] }));
+    if (isMarket(tile)) {   // buy a chosen gear kit / boat / car (selectable)
+      if (p.gear.length < GEAR_MAX && room) {
+        (['g1', 'g2', 'g3'] as GearKind[]).forEach(k => { if (p.money >= GEAR_PRICE[k]) out.push({ move: 'buy', args: [k] }); });
+        if (p.money >= GEAR_PRICE.field) DTYPES.forEach(t => out.push({ move: 'buy', args: ['field', t] }));
+      }
+      if (!p.boat && p.money >= BOAT_PRICE) out.push({ move: 'buy', args: ['boat'] });
+      if (p.money >= CAR_PRICE) out.push({ move: 'buy', args: ['car'] });
     }
     if (p.boat) out.push({ move: 'drop', args: ['boat'] });
     if (tile.equipment.some(e => e.kind === 'boat') && !p.boat) out.push({ move: 'pickup', args: ['boat'] });

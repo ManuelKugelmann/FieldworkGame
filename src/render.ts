@@ -122,7 +122,9 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 export function actionLabel(a: Action, tile: Tile, goals?: Pattern[]): string | null {
   if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)}` : null; }
   if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${g.label} (+${g.prestige}P)` : 'Publish'; }
-  if (a.move === 'buy') { const k = a.args![0] as GearItem['kind']; const f = a.args![1] as Discovery['type'] | undefined; return k === 'field' ? `Buy ${DTYPE_SYMBOL[f!]} kit (−${GEAR_PRICE.field}$)` : `Buy 🔧+${k[1]} (−${GEAR_PRICE[k]}$)`; }
+  if (a.move === 'buy') { const k = a.args![0] as string, f = a.args![1] as Discovery['type'] | undefined;
+    if (k === 'boat') return 'Buy boat (−5$)'; if (k === 'car') return 'Buy car (−8$)';
+    return k === 'field' ? `Buy ${DTYPE_SYMBOL[f!]} kit (−${GEAR_PRICE.field}$)` : `Buy 🔧+${k[1]} (−${GEAR_PRICE[k as GearItem['kind']]}$)`; }
   if (a.move === 'board') return 'Board car';
   if (a.move === 'leave') return 'Leave car';
   if (a.move === 'drop') return 'Drop boat';
