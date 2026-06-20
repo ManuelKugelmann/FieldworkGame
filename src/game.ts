@@ -5,7 +5,7 @@ export type Terrain = 'grassland' | 'jungle' | 'rocky' | 'water' | 'void';  // r
 export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
-export type Hotspot = 'base' | 'remote' | 'village' | 'remoteVillage' | 'commStation';  // POIs: road base, frontier hub (remote), road market (village), jungle market (remote village), road publish station (comm station)
+export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base (market + research), frontier (remote) research site, road market (village)
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile / in a car trunk (droppable/pickup-able)
 export interface Equip { kind: EquipKind; gear?: GearItem; }   // a cached item: a boat, or a gear kit (carries its full GearItem)
 export interface Vehicle { pos: number; driver: string | null; trunk: Equip[]; }  // car: a positioned entity you board/leave; drive moves both; trunk = items riding in the car (shared, ≤ TRUNK_SLOTS)
@@ -90,17 +90,17 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
   return 0;
 }
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
-const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'commStation';  // the TWO research sites: base lab + comm-station research centre. Each holds a SHARED, face-up open pool (tile.cache) — Texas Hold'em community cards.
+const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // the TWO research sites: base lab + frontier (remote) research site. Each holds a SHARED, face-up open pool (tile.cache) — Texas Hold'em community cards.
 // the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
 const researchPool = (G: GState, pos: number): Discovery[] | null => G.epilogue ? G.map[G.base].cache : (isResearch(G.map[pos]) ? G.map[pos].cache : null);
 // entering a research site force-stashes your whole hand into that site's shared pool — open for ANY player's research, consumed when used
 function landAt(G: GState, cur: string) {
   const p = G.players[cur], t = G.map[p.pos];
   if (!G.epilogue && isResearch(t) && p.samples.length) {
-    t.cache.push(...p.samples); G.log.push(`P${cur} stash ${p.samples.length} → ${t.hotspot === 'base' ? 'lab' : 'research-ctr'} pool`); p.samples.length = 0;
+    t.cache.push(...p.samples); G.log.push(`P${cur} stash ${p.samples.length} → ${t.hotspot === 'base' ? 'lab' : 'frontier'} pool`); p.samples.length = 0;
   }
 }
-const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' || t.hotspot === 'remoteVillage';  // buy gear here (base / road village / jungle remote village)
+const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  // buy gear/boat/car here (base + road village)
 
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
@@ -362,18 +362,13 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   const allLand: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'jungle' && g[i].roads === 0) allLand.push(i);
   const dist = (a: number, b: number) => Math.abs(((a / N) | 0) - ((b / N) | 0)) + Math.abs((a % N) - (b % N));
   g[base].hotspot = 'base';                                        // main hub — on the road
-  const popc = (b: number) => (b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1) + ((b >> 3) & 1);
   const free = (i: number | undefined) => i !== undefined && !g[i].hotspot;
   const byFar = (arr: number[]) => arr.slice().sort((a, b) => dist(b, base) - dist(a, base));
   const rds = roads.filter(i => i !== base);                       // market sits MID-road, not at the far end
   const maxD = Math.max(0, ...rds.map(i => dist(i, base))), mid = maxD / 2;
   const village = rds.slice().sort((a, b) => Math.abs(dist(a, base) - mid) - Math.abs(dist(b, base) - mid))[0];
   if (free(village)) g[village].hotspot = 'village';              // road market, near the middle of the road
-  const station = rds.filter(i => free(i) && popc(g[i].roads) >= 3)[0] ?? byFar(rds.filter(free))[0];
-  if (free(station)) g[station].hotspot = 'commStation';         // comm station — a road junction (else far road): publish hub
-  if (free(byFar(allLand.filter(free))[0])) g[byFar(allLand.filter(free))[0]].hotspot = 'remote';   // farthest frontier — may be isolated (reach by boat or skip)
-  const rvillage = byFar(land.filter(free))[0];
-  if (free(rvillage)) g[rvillage].hotspot = 'remoteVillage';     // remote village — farthest REACHABLE jungle: a market in the wilds
+  if (free(byFar(allLand.filter(free))[0])) g[byFar(allLand.filter(free))[0]].hotspot = 'remote';   // farthest frontier — the wild 2nd research site (may be isolated → reach by boat)
   return true;
 }
 function generateMap(seed: number, dim: number): { map: Tile[]; start: number } {
@@ -540,7 +535,7 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
 
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED open pool at this research site (or the lab pool in the epilogue)
   const p = G.players[ctx.currentPlayer], apCost = publishCost(p.pubs), pool = researchPool(G, p.pos);
-  if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / comm station) — cost rises with publish count
+  if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier) — cost rises with publish count
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
   const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the open pool — anyone's stashed cards are fair game
   p.ap -= apCost;
@@ -750,9 +745,9 @@ export const Expedition: Game<GState> = {
         const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer);   // field season: 1 event/turn
         if (G.monsoon >= MONSOON_END || !G.events.length) {
           G.epilogue = true; G.labLeft = ctx.numPlayers;
-          const lab = G.map[G.base].cache;   // lab season: every hand + the comm-station pool all consolidate into the base lab pool
+          const lab = G.map[G.base].cache;   // lab season: every hand + the frontier pool all consolidate into the base lab pool
           for (const id in G.players) { const pl = G.players[id]; if (pl.samples.length) { lab.push(...pl.samples); pl.samples.length = 0; } }
-          G.map.forEach(t => { if (t.hotspot === 'commStation' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
+          G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
           G.log.push('🌧️ monsoon — indoor lab season');
         }
       }

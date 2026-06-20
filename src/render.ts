@@ -61,7 +61,7 @@ const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const EQUIP_COLOR = '#cfd6c8';
-const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R', remoteVillage: 'V', commStation: 'C' };
+const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R' };
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
@@ -146,7 +146,7 @@ export function describeTile(G: GState, i: number): string {
   if (t.hotspot) bits.push(t.hotspot);
   if (t.smallRivers) bits.push('brook');
   if (t.blocked) bits.push('cliff edge');
-  const research = t.hotspot === 'base' || t.hotspot === 'commStation';
+  const research = t.hotspot === 'base' || t.hotspot === 'remote';
   const cars = G.vehicles.filter(v => v.pos === i);
   for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `car (P${car.driver})` : 'car (empty)') + tr); }
   const items = t.equipment.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!));
