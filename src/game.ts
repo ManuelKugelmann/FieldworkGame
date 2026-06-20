@@ -404,18 +404,19 @@ function loseItem(p: PlayerS, random: any): string {
   p.ap = Math.max(0, p.ap - 1); return '1AP';
 }
 // fire a tile event on enter — hazards/boons hit the entering player or the tile itself
-function fireEvent(G: GState, t: number, kind: TileEventKind, random: any, cur: string) {
+function fireEvent(G: GState, t: number, kind: TileEventKind, random: any, cur: string, from: number) {
   const p = G.players[cur], tile = G.map[t];
-  if (kind === 'rockslide') {   // PASSIVE full-tile hazard: bury this tile's finds AND seal the WHOLE tile (every edge → impassable obstacle; not a single cliff edge). Hotspots are spared. Escape by helilift.
+  if (kind === 'rockslide') {   // PASSIVE full-tile hazard: bury this tile's finds AND seal the WHOLE tile (every edge → impassable obstacle; not a single cliff edge). Hotspots are spared; the entering player is bumped back to where they came from.
     const n = tile.finds.length; tile.finds.length = 0;
     if (!tile.hotspot) for (const j of nbrs(t)) { tile.blocked |= dirBit(t, j); G.map[j].blocked |= dirBit(j, t); }
-    G.log.push(`⛏ rockslide @${t} — tile sealed${n ? `, ${n} find${n > 1 ? 's' : ''} buried` : ''}`);
+    if (from >= 0 && from !== t) { p.pos = from; const car = myVehicle(G, cur); if (car && car.pos === t) car.pos = from; }   // bump the player (and a car they drove in) back to the entry tile
+    G.log.push(`⛏ rockslide @${t} — tile sealed${n ? `, ${n} find${n > 1 ? 's' : ''} buried` : ''}, P${cur} bumped back`);
   }
   else if (kind === 'animalAttack') G.log.push(`🐗 animal attack — P${cur} loses ${loseItem(p, random)}`);
   else if (kind === 'bushthieves') { const take = Math.min(p.money, BUSHTHIEF_TAKE); p.money -= take; G.log.push(`🏴 bushthieves @${t} — P${cur} -${take}$`); }
   else { const ty = dominantType(tile.terrain); p.samples.push({ type: ty, color: 0 }); G.log.push(`🧭 helpful native — P${cur} gains ${ty}0`); }   // a free easy specimen of the local discipline
 }
-function reveal(G: GState, t: number, random: any, cur: string) {
+function reveal(G: GState, t: number, random: any, cur: string, from: number) {
   const tile = G.map[t]; if (tile.revealed) return;
   tile.revealed = true;
   const pool = G.pools[tile.terrain]; if (!pool) return;
@@ -427,10 +428,10 @@ function reveal(G: GState, t: number, random: any, cur: string) {
     else if (tile.finds.length < cap) tile.finds.push(c);         // specimen — kept up to the tile's find cap
   }
   const kinds = new Set(events);                                  // collapse duplicates: at most ONE of each effect per tile
-  if (kinds.has('rockslide')) fireEvent(G, t, 'rockslide', random, cur);            // bury finds + seal the whole tile
-  if (kinds.has('animalAttack')) fireEvent(G, t, 'animalAttack', random, cur);      // lose at most 1 inventory item
-  if (kinds.has('helpfulNative')) fireEvent(G, t, 'helpfulNative', random, cur);    // gain at most 1 specimen
-  if (kinds.has('bushthieves')) fireEvent(G, t, 'bushthieves', random, cur);
+  if (kinds.has('rockslide')) fireEvent(G, t, 'rockslide', random, cur, from);      // bury finds + seal the whole tile + bump back
+  if (kinds.has('animalAttack')) fireEvent(G, t, 'animalAttack', random, cur, from);      // lose at most 1 inventory item
+  if (kinds.has('helpfulNative')) fireEvent(G, t, 'helpfulNative', random, cur, from);    // gain at most 1 specimen
+  if (kinds.has('bushthieves')) fireEvent(G, t, 'bushthieves', random, cur, from);
   G.log.push(`reveal ${t} (${tile.terrain}): ${tile.finds.length}${kinds.size ? ` +${kinds.size}⚡` : ''}`);
 }
 
@@ -443,14 +444,14 @@ const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t);
   if (p.ap < c) return INVALID_MOVE;
   const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
-  p.ap -= c; p.pos = t; reveal(G, t, random, ctx.currentPlayer); landAt(G, ctx.currentPlayer);
+  const from = p.pos; p.ap -= c; p.pos = t; reveal(G, t, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
   G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' ⛵' : ''})`);
 };
 // generic link-ride: travel up to `steps` tiles along link `k` for 1 AP. car→roads, boat→river channel — same code, different prerequisite.
 function ride(G: GState, ctx: any, random: any, dest: number, from: number, steps: number, k: EdgeKind, allowed: boolean, arrive: () => void, log: string) {
   const p = G.players[ctx.currentPlayer];
   if (G.epilogue || p.ap < 1 || !allowed || !linkReach(G.map, from, steps, k).includes(dest)) return INVALID_MOVE;
-  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random, ctx.currentPlayer); landAt(G, ctx.currentPlayer);
+  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
   G.log.push(log);
 }
 const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (player + car travel together)
