@@ -6,11 +6,10 @@ export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
 // some cards in a terrain's stack are tile EVENTS (hazards/boons) — they fire on tile ENTER (when revealed), they're never collectible finds
-export type TileEventKind = 'rockslide' | 'animalAttack' | 'bushthieves' | 'helpfulNative' | 'blocked';
+export type TileEventKind = 'rockslide' | 'animalAttack' | 'bushthieves' | 'helpfulNative';
 export interface TileEvent { event: TileEventKind; }
 export type Card = Discovery | TileEvent;                          // a stack holds specimens + events mixed
 const isEvent = (c: Card): c is TileEvent => 'event' in c;
-const isLandT = (t: Tile) => t.terrain !== 'water' && t.terrain !== 'void';
 export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base (market + research), frontier (remote) research site, road market (village)
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile / in a car trunk (droppable/pickup-able)
 export interface Equip { kind: EquipKind; gear?: GearItem; }   // a cached item: a boat, or a gear kit (carries its full GearItem)
@@ -118,7 +117,7 @@ const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, jungle: 2,
 // tile-event deck mixed into each terrain stack: a base weighting, with a per-terrain lean toward its signature hazard
 const EVENT_RATE = 0.12;            // ~ this fraction of a terrain stack is events (the rest are specimens)
 const BUSHTHIEF_TAKE = 3;           // $ a bushthief camp robs from the entering player
-const EVENT_W: Record<TileEventKind, number> = { rockslide: 2, animalAttack: 2, bushthieves: 1, helpfulNative: 2, blocked: 2 };
+const EVENT_W: Record<TileEventKind, number> = { rockslide: 2, animalAttack: 2, bushthieves: 1, helpfulNative: 2 };
 const EVENT_LEAN: Partial<Record<Terrain, TileEventKind>> = { rocky: 'rockslide', jungle: 'animalAttack', ruins: 'bushthieves' };  // looters guard the ruins
 const dominantType = (terr: Terrain): DType => { const w = WEIGHTS[terr]; return w ? (Object.keys(w) as DType[]).reduce((a, b) => w[b] > w[a] ? b : a) : 'geo'; };
 function pickEvent(t: Terrain, rand: () => number): TileEventKind {
@@ -407,15 +406,13 @@ function loseItem(p: PlayerS, random: any): string {
 // fire a tile event on enter — hazards/boons hit the entering player or the tile itself
 function fireEvent(G: GState, t: number, kind: TileEventKind, random: any, cur: string) {
   const p = G.players[cur], tile = G.map[t];
-  if (kind === 'rockslide') G.log.push(`⛏ rockslide @${t} — P${cur} loses ${loseItem(p, random)}`);
+  if (kind === 'rockslide') {   // PASSIVE full-tile hazard: bury this tile's finds AND seal the WHOLE tile (every edge → impassable obstacle; not a single cliff edge). Hotspots are spared. Escape by helilift.
+    const n = tile.finds.length; tile.finds.length = 0;
+    if (!tile.hotspot) for (const j of nbrs(t)) { tile.blocked |= dirBit(t, j); G.map[j].blocked |= dirBit(j, t); }
+    G.log.push(`⛏ rockslide @${t} — tile sealed${n ? `, ${n} find${n > 1 ? 's' : ''} buried` : ''}`);
+  }
   else if (kind === 'animalAttack') G.log.push(`🐗 animal attack — P${cur} loses ${loseItem(p, random)}`);
   else if (kind === 'bushthieves') { const take = Math.min(p.money, BUSHTHIEF_TAKE); p.money -= take; G.log.push(`🏴 bushthieves @${t} — P${cur} -${take}$`); }
-  else if (kind === 'blocked') {   // PASSIVE hazard: seal 1–2 of the tile's plain land edges (persists; reuses the cliff bitmask) — always leave one open so you can still leave
-    const open = nbrs(t).filter(j => isLandT(G.map[j]) && !(tile.blocked & dirBit(t, j)) && !(tile.roads & dirBit(t, j)) && !(tile.paths & dirBit(t, j)) && !tile.bridge && !G.map[j].bridge);
-    const n = Math.min(2, Math.max(0, open.length - 1));
-    for (let k = 0; k < n; k++) { const j = open.splice(random.Die(open.length) - 1, 1)[0]; tile.blocked |= dirBit(t, j); G.map[j].blocked |= dirBit(j, t); }
-    G.log.push(`🪨 blocked @${t} — ${n} edge${n === 1 ? '' : 's'} sealed`);
-  }
   else { const ty = dominantType(tile.terrain); p.samples.push({ type: ty, color: 0 }); G.log.push(`🧭 helpful native — P${cur} gains ${ty}0`); }   // a free easy specimen of the local discipline
 }
 function reveal(G: GState, t: number, random: any, cur: string) {
@@ -430,11 +427,10 @@ function reveal(G: GState, t: number, random: any, cur: string) {
     else if (tile.finds.length < cap) tile.finds.push(c);         // specimen — kept up to the tile's find cap
   }
   const kinds = new Set(events);                                  // collapse duplicates: at most ONE of each effect per tile
-  const loss = [...kinds].find(k => k === 'rockslide' || k === 'animalAttack');
-  if (loss) fireEvent(G, t, loss, random, cur);                   // lose at most 1 inventory item to a hazard
-  if (kinds.has('helpfulNative')) fireEvent(G, t, 'helpfulNative', random, cur);   // gain at most 1 from a native
+  if (kinds.has('rockslide')) fireEvent(G, t, 'rockslide', random, cur);            // bury finds + seal the whole tile
+  if (kinds.has('animalAttack')) fireEvent(G, t, 'animalAttack', random, cur);      // lose at most 1 inventory item
+  if (kinds.has('helpfulNative')) fireEvent(G, t, 'helpfulNative', random, cur);    // gain at most 1 specimen
   if (kinds.has('bushthieves')) fireEvent(G, t, 'bushthieves', random, cur);
-  if (kinds.has('blocked')) fireEvent(G, t, 'blocked', random, cur);
   G.log.push(`reveal ${t} (${tile.terrain}): ${tile.finds.length}${kinds.size ? ` +${kinds.size}⚡` : ''}`);
 }
 
@@ -676,6 +672,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const can = p.boat ? canBoat : canMove, wt = p.boat ? boatCost : cost;                    // fallback: any affordable step (don't stall)
   const opts = nbrs(p.pos).filter(t => can(G.map, p.pos, t) && p.ap >= wt(G.map, p.pos, t));
   if (!hasHand && opts.length) return { move: 'move', args: [opts[Math.floor(rand() * opts.length)]] };
+  if (!nbrs(p.pos).some(t => canMove(G.map, p.pos, t) || canBoat(G.map, p.pos, t)) && p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };  // sealed in by a rockslide → fly out
   return { event: 'endTurn' };
 }
 
