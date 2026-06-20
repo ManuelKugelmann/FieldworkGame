@@ -1,10 +1,15 @@
 import type { Game, Move } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
 
-export type Terrain = 'grassland' | 'jungle' | 'rocky' | 'water' | 'void';  // roads are an edge overlay on a land base, not a terrain; void = off-board
+export type Terrain = 'grassland' | 'jungle' | 'rocky' | 'ruins' | 'water' | 'void';  // roads are an edge overlay on a land base, not a terrain; ruins = arch-rich dig site; void = off-board
 export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
+// some cards in a terrain's stack are tile EVENTS (hazards/boons) — they fire on tile ENTER (when revealed), they're never collectible finds
+export type TileEventKind = 'rockslide' | 'animalAttack' | 'bushthieves' | 'helpfulNative';
+export interface TileEvent { event: TileEventKind; }
+export type Card = Discovery | TileEvent;                          // a stack holds specimens + events mixed
+const isEvent = (c: Card): c is TileEvent => 'event' in c;
 export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base (market + research), frontier (remote) research site, road market (village)
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile / in a car trunk (droppable/pickup-able)
 export interface Equip { kind: EquipKind; gear?: GearItem; }   // a cached item: a boat, or a gear kit (carries its full GearItem)
@@ -18,7 +23,7 @@ export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
   vehicles: Vehicle[];                                     // shared cars on the board (start at base)
-  pools: Partial<Record<Terrain, Discovery[]>>;
+  pools: Partial<Record<Terrain, Card[]>>;
   goals: Pattern[];                                        // the open research questions on the board (shared, consumed on publish)
   goalDeck: Pattern[];                                     // remaining projects; the pool refills from here on a claim
   events: string[]; monsoon: number; epilogue: boolean; labLeft: number; log: string[];   // epilogue = indoor lab season
@@ -37,7 +42,7 @@ const DIFF_REWARD = 0.33;   // prestige premium per unit of pinned-colour diffic
 const gearTag = (g: GearItem) => g.kind === 'field' ? `${g.field} kit` : g.kind;   // log label for a gear kit
 const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more gear piece (discoveries are uncapped)
 
-const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare
+const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, ruins: 4, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare; ruins are a deep dig site
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
 const grass = (map: Tile[], a: number, b: number) => map[a].terrain === 'grassland' || map[b].terrain === 'grassland';  // grassland = fast going (path-like)
@@ -106,16 +111,30 @@ const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
   jungle:    { bot: 4, zoo: 4, arch: 2, geo: 1 },   // dense flora + fauna (botany & zoology rich)
   rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
+  ruins:     { arch: 8, geo: 2, bot: 1, zoo: 1 },   // a dig site — archaeology dominates the stack
 };
-const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, jungle: 2, rocky: 3 };  // each biome leans toward a signature colour
-function buildPool(t: Terrain, rand: () => number): Discovery[] {
-  const out: Discovery[] = [], w = WEIGHTS[t]!, bias = BIOME_COLOR[t];
+const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, jungle: 2, rocky: 3, ruins: 3 };  // each biome leans toward a signature colour
+// tile-event deck mixed into each terrain stack: a base weighting, with a per-terrain lean toward its signature hazard
+const EVENT_RATE = 0.12;            // ~ this fraction of a terrain stack is events (the rest are specimens)
+const BUSHTHIEF_TAKE = 3;           // $ a bushthief camp robs from the entering player
+const EVENT_W: Record<TileEventKind, number> = { rockslide: 2, animalAttack: 2, bushthieves: 1, helpfulNative: 2 };
+const EVENT_LEAN: Partial<Record<Terrain, TileEventKind>> = { rocky: 'rockslide', jungle: 'animalAttack', ruins: 'bushthieves' };  // looters guard the ruins
+const dominantType = (terr: Terrain): DType => { const w = WEIGHTS[terr]; return w ? (Object.keys(w) as DType[]).reduce((a, b) => w[b] > w[a] ? b : a) : 'geo'; };
+function pickEvent(t: Terrain, rand: () => number): TileEventKind {
+  const w = { ...EVENT_W }; const lean = EVENT_LEAN[t]; if (lean) w[lean] += 3;
+  const kinds = Object.keys(w) as TileEventKind[]; let r = rand() * kinds.reduce((s, k) => s + w[k], 0);
+  for (const k of kinds) { r -= w[k]; if (r < 0) return k; } return 'helpfulNative';
+}
+function buildPool(t: Terrain, rand: () => number): Card[] {
+  const out: Card[] = [], w = WEIGHTS[t]!, bias = BIOME_COLOR[t];
   (Object.keys(w) as DType[]).forEach(k => {
     for (let i = 0; i < w[k] * 4; i++) {
       const color = (bias !== undefined && rand() < 0.35) ? bias : Math.floor(rand() * COLORS);   // colour is independent of type, only slightly biome-leaning
       out.push({ type: k, color });
     }
   });
+  const nev = Math.max(1, Math.round(out.length * EVENT_RATE));   // salt the stack with tile events (fire on enter)
+  for (let i = 0; i < nev; i++) out.push({ event: pickEvent(t, rand) });
   return out;
 }
 
@@ -256,8 +275,9 @@ function genOnce(seed: number) {
   const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'jungle' && g[i].roads === 0) set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'jungle' && g[j].roads === 0); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };   // never carve over a road overlay (set() would wipe its edges)
   const scale = (N * N) / 100;   // patch counts scale with board area (10×10 … 15×15)
   carve('rocky', Math.round(6 * scale), 4); carve('grassland', Math.round(8 * scale), 5);
+  carve('ruins', Math.max(1, Math.round(2 * scale)), 2);   // a few small arch-rich dig sites carved out of the jungle
   // CLIFFS: 1–2 uncrossable edges on some land tiles (plain land↔land only — never roads/water/bridges, so the laid networks stay intact)
-  const isLand = (i: number) => { const t = g[i].terrain; return t === 'jungle' || t === 'rocky' || t === 'grassland'; };
+  const isLand = (i: number) => { const t = g[i].terrain; return t === 'jungle' || t === 'rocky' || t === 'grassland' || t === 'ruins'; };
   for (let i = 0; i < N * N; i++) {
     if (!isLand(i) || rand() >= 0.14) continue;                    // only some land tiles get cliffs
     const cand = nbrs(i).filter(j => isLand(j) && !(g[i].roads & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
@@ -377,12 +397,30 @@ function generateMap(seed: number, dim: number): { map: Tile[]; start: number } 
   throw new Error('map generation failed validation');   // fail-early
 }
 
-function reveal(G: GState, t: number, random: any) {
+// fire a tile event on enter — hazards/boons hit the entering player or the tile itself
+function fireEvent(G: GState, t: number, kind: TileEventKind, random: any, cur: string) {
+  const p = G.players[cur], tile = G.map[t];
+  if (kind === 'rockslide') { const n = tile.finds.length; tile.finds.length = 0; G.log.push(`⛏ rockslide @${t}${n ? ` — ${n} find${n > 1 ? 's' : ''} buried` : ''}`); }
+  else if (kind === 'animalAttack') {
+    if (p.samples.length) { const d = p.samples.splice(random.Die(p.samples.length) - 1, 1)[0]; G.log.push(`🐗 animal attack — P${cur} loses ${d.type}${d.color}`); }
+    else { p.ap = Math.max(0, p.ap - 1); G.log.push(`🐗 animal attack — P${cur} -1AP`); }
+  }
+  else if (kind === 'bushthieves') { const take = Math.min(p.money, BUSHTHIEF_TAKE); p.money -= take; G.log.push(`🏴 bushthieves @${t} — P${cur} -${take}$`); }
+  else { const ty = dominantType(tile.terrain); p.samples.push({ type: ty, color: 0 }); G.log.push(`🧭 helpful native — P${cur} gains ${ty}0`); }   // a free easy specimen of the local discipline
+}
+function reveal(G: GState, t: number, random: any, cur: string) {
   const tile = G.map[t]; if (tile.revealed) return;
   tile.revealed = true;
   const pool = G.pools[tile.terrain]; if (!pool) return;
-  for (let k = 0; k < tile.richness && pool.length; k++) if (random.Number() < FIND_CHANCE) tile.finds.push(pool.splice(random.Die(pool.length) - 1, 1)[0]);   // each potential slot resolves to a find or comes up empty
-  G.log.push(`reveal ${t} (${tile.terrain}): ${tile.finds.length}`);
+  const cap = (tile.roads || tile.paths) ? 1 : tile.richness;     // road/trail tiles hold at most ONE find
+  const events: TileEventKind[] = [];
+  for (let k = 0; k < tile.richness && pool.length; k++) if (random.Number() < FIND_CHANCE) {
+    const c = pool.splice(random.Die(pool.length) - 1, 1)[0];      // each potential slot resolves to a card or comes up empty
+    if (isEvent(c)) events.push(c.event);                          // events fire on enter (below); never become finds
+    else if (tile.finds.length < cap) tile.finds.push(c);         // specimen — kept up to the tile's find cap
+  }
+  for (const e of events) fireEvent(G, t, e, random, cur);        // resolve hazards/boons after the finds settle (so a rockslide can bury them)
+  G.log.push(`reveal ${t} (${tile.terrain}): ${tile.finds.length}${events.length ? ` +${events.length}⚡` : ''}`);
 }
 
 const myVehicle = (G: GState, id: string) => G.vehicles.find(v => v.driver === id);
@@ -394,14 +432,14 @@ const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t);
   if (p.ap < c) return INVALID_MOVE;
   const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
-  p.ap -= c; p.pos = t; reveal(G, t, random); landAt(G, ctx.currentPlayer);
+  p.ap -= c; p.pos = t; reveal(G, t, random, ctx.currentPlayer); landAt(G, ctx.currentPlayer);
   G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' ⛵' : ''})`);
 };
 // generic link-ride: travel up to `steps` tiles along link `k` for 1 AP. car→roads, boat→river channel — same code, different prerequisite.
 function ride(G: GState, ctx: any, random: any, dest: number, from: number, steps: number, k: EdgeKind, allowed: boolean, arrive: () => void, log: string) {
   const p = G.players[ctx.currentPlayer];
   if (G.epilogue || p.ap < 1 || !allowed || !linkReach(G.map, from, steps, k).includes(dest)) return INVALID_MOVE;
-  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random); landAt(G, ctx.currentPlayer);
+  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random, ctx.currentPlayer); landAt(G, ctx.currentPlayer);
   G.log.push(log);
 }
 const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (player + car travel together)
@@ -733,7 +771,7 @@ export const Expedition: Game<GState> = {
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles: Array.from({ length: ctx.numPlayers }, () => ({ pos: start, driver: null, trunk: [] as Equip[] })),   // one shared car per player, parked at base
-      pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand) },
+      pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand) },
       ...(() => { const deck = buildGoalDeck(prng((seed ^ 0x9e3779b1) >>> 0)); return { goals: deck.slice(0, POOL_SIZE), goalDeck: deck.slice(POOL_SIZE) }; })(),   // deal the open-question pool; rest is the refill deck
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };

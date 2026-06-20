@@ -47,7 +47,7 @@ const prettyTag = (tag: string) => { const m = tag.match(/^([a-z]+)(\d+)$/); ret
 export const prettyLog = (line: string) => line.replace(/\b(geo|zoo|bot|arch)(\d)/g, (_m, t, c) => DTYPE_SYMBOL[t as Discovery['type']] + c);   // swap type words for icons in a log line
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
-  grassland: '#5d6e3a', jungle: '#2c4a20', rocky: '#565659', water: '#1d4c79', void: '#0b0f0a',
+  grassland: '#5d6e3a', jungle: '#2c4a20', rocky: '#565659', ruins: '#7a6a45', water: '#1d4c79', void: '#0b0f0a',
 };
 // grayish biome tint for the potential-discovery dots (the token pool is biome-specific, so the dots hint at the biome)
 function grayishBiome(hex: string): string {
@@ -253,7 +253,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     if (t.terrain === 'void') continue;   // off-board cell → leave as background for a ragged edge
     cctx.fillStyle = TERRAIN_FILL[t.terrain];   // bridges are water tiles — their road/trail link is drawn on top (section 2)
     cctx.fillRect(x, y, CELL, CELL);
-    if (!t.bridge && (t.terrain === 'jungle' || t.terrain === 'rocky')) {   // global move-cost: 2-AP bushwhack tiles read darker than 1-AP grassland/road/water
+    if (!t.bridge && (t.terrain === 'jungle' || t.terrain === 'rocky' || t.terrain === 'ruins')) {   // global move-cost: 2-AP bushwhack tiles read darker than 1-AP grassland/road/water
       cctx.fillStyle = 'rgba(0,0,0,0.17)'; cctx.fillRect(x, y, CELL, CELL);
     }
     cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.setLineDash([]);
