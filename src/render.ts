@@ -2,7 +2,7 @@
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
 import type { GState, Tile, Discovery, Pattern, GearItem, PlayerS, Vehicle } from './game';
-import { targetAP, evalGoal, GEAR_PRICE, catDC } from './game';
+import { targetAP, evalGoal, GEAR_PRICE, catDC, BIOME_COLOR } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -291,21 +291,16 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     // 8 perimeter slots (4 corners + 4 edge midpoints): discovery dots first, then cached gear/boat
     const d = Math.max(6, CELL * 0.17), m = CELL / 2, rr = Math.max(2.5, CELL * 0.075);
     const slots = [[x + d, y + d], [x + CELL - d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d], [x + m, y + d], [x + d, y + m], [x + CELL - d, y + m], [x + m, y + CELL - d]];   // corners, then T/L/R, bottom-centre last (kept clear for the car)
+    const rrBig = Math.max(4, CELL * 0.13);   // (also used by the dropped-cache dots below)
     let s = 0;
-    const n = t.revealed ? t.finds.length : t.richness;
-    const rrBig = Math.max(4, CELL * 0.13);   // explored discoveries drawn larger so the bright colour + type glyph read clearly
-    for (let k = 0; k < n && s < 8; k++, s++) {   // discovery dots: bright + type-stamped (explored) / grayish-biome (potential)
-      const sx = slots[s][0], sy = slots[s][1];
-      if (t.revealed) {
-        const ty = t.finds[k].type;
-        cctx.fillStyle = DTYPE_COLOR[ty];
-        cctx.beginPath(); cctx.arc(sx, sy, rrBig, 0, 7); cctx.fill();
-        cctx.lineWidth = 1; cctx.strokeStyle = 'rgba(0,0,0,0.55)'; cctx.stroke();   // dark rim for contrast on any terrain
-        if (CELL >= 22) { cctx.font = `${rrBig * 1.7}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[ty], sx, sy + 0.5); }   // type icon on the dot
-      } else {
-        cctx.fillStyle = GRAY_BIOME[t.terrain];
-        cctx.beginPath(); cctx.arc(sx, sy, rr, 0, 7); cctx.fill();
-      }
+    const cx0 = x + m, cy0 = y + m;
+    if (t.revealed && t.finds.length) {   // the UNFLIPPED discovery: one large biome-pool-coloured centre circle (exact type/colour stays hidden until catalogued → flipped into your hand)
+      cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.27, 0, 7);
+      cctx.fillStyle = DCOLOR[BIOME_COLOR[t.terrain] ?? 0]; cctx.fill();
+      cctx.lineWidth = 1.5; cctx.strokeStyle = 'rgba(0,0,0,0.55)'; cctx.stroke();
+    } else if (!t.revealed && t.richness > 0) {   // unexplored terrain that MIGHT bear a find → dim biome hint
+      cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.13, 0, 7);
+      cctx.fillStyle = GRAY_BIOME[t.terrain]; cctx.fill();
     }
     for (const dc of t.cache) {   // DROPPED discoveries: face-up, free to grab — drawn with a white ring to read as "left here"
       if (s >= 8) break;
@@ -358,13 +353,13 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   for (const [tile, ids] of positions) {
     const c = tile % G.cols, r = (tile / G.cols) | 0;
     ids.forEach((id, k) => {
-      const ox = ids.length > 1 ? (k - (ids.length - 1) / 2) * 12 : 0;
+      const ox = ids.length > 1 ? (k - (ids.length - 1) / 2) * 10 : 0;
       const cx = c * CELL + CELL / 2 + ox, cy = r * CELL + CELL / 2;
-      cctx.beginPath(); cctx.arc(cx, cy, CELL * 0.22, 0, 7);
+      cctx.beginPath(); cctx.arc(cx, cy, CELL * 0.15, 0, 7);   // smaller pawn → the biome discovery circle shows around it
       cctx.fillStyle = PLAYER_COLOR[+id % 4]; cctx.fill();
-      cctx.lineWidth = id === ctxState.currentPlayer ? 3 : 1.5;
+      cctx.lineWidth = id === ctxState.currentPlayer ? 2.5 : 1.25;
       cctx.strokeStyle = id === ctxState.currentPlayer ? '#ffffff' : '#0b0f0a'; cctx.stroke();
-      cctx.fillStyle = '#0b0f0a'; cctx.font = `bold ${CELL * 0.24}px ui-monospace, monospace`;
+      cctx.fillStyle = '#0b0f0a'; cctx.font = `bold ${CELL * 0.17}px ui-monospace, monospace`;
       cctx.fillText(id, cx, cy + 1);
     });
   }

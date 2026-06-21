@@ -115,7 +115,7 @@ const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
   ruins:     { arch: 8, geo: 2, bot: 1, zoo: 1 },   // a dig site — archaeology dominates the stack
 };
-const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, jungle: 2, rocky: 3, ruins: 3 };  // each biome leans toward a signature colour
+export const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, jungle: 2, rocky: 3, ruins: 3 };  // each biome leans toward a signature colour (index into the 4-colour palette)
 // tile-event deck mixed into each terrain stack: a base weighting, with a per-terrain lean toward its signature hazard
 const EVENT_RATE = 0.12;            // ~ this fraction of a terrain stack is events (the rest are specimens)
 const BUSHTHIEF_TAKE = 3;           // $ a bushthief camp robs from the entering player
@@ -421,7 +421,7 @@ function reveal(G: GState, t: number, random: any, cur: string, from: number) {
   const tile = G.map[t]; if (tile.revealed) return;
   tile.revealed = true;
   const pool = G.pools[tile.terrain]; if (!pool) return;
-  const cap = tile.roads ? 0 : 1;    // at most ONE find per tile (roads stay picked-clean = 0); the richness-many trials below still gate the CHANCE, so richer terrain is likelier to bear its single find — relative probabilities preserved
+  const cap = (tile.roads || tile.hotspot) ? 0 : 1;    // at most ONE find per tile; roads AND special locations (hotspots) bear no finds; the richness-many trials below still gate the CHANCE, so richer terrain is likelier to bear its single find — relative probabilities preserved
   const events: TileEventKind[] = [];
   for (let k = 0; k < tile.richness && pool.length; k++) if (random.Number() < FIND_CHANCE) {
     const c = pool.splice(random.Die(pool.length) - 1, 1)[0];      // each potential slot resolves to a card or comes up empty
