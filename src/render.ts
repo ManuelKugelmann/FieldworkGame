@@ -61,7 +61,7 @@ const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const EQUIP_COLOR = '#cfd6c8';
-const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R' };
+const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R', riverVillage: 'V' };
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
@@ -85,7 +85,7 @@ export function fitCanvas(canvas: HTMLCanvasElement, G: GState): CanvasRendering
   const wrap = canvas.parentElement;
   const availW = (wrap ? wrap.clientWidth : window.innerWidth) || window.innerWidth;
   const top = canvas.getBoundingClientRect().top;          // stable: set by the chrome above, not by the canvas's own height
-  const availH = window.innerHeight - top - 104;           // leave room for the legend + bottom padding so the board doesn't force a vertical scroll
+  const availH = window.innerHeight - top - 132;           // reserve more below the board (legend + controls + footer link) so it never forces a vertical scroll
   CELL = Math.max(MIN_CELL, Math.floor(Math.min(availW / b.cols, availH / b.rows)));
   const d = dpr();
   canvas.style.width = `${b.cols * CELL}px`;

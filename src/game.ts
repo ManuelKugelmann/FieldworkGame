@@ -10,7 +10,7 @@ export type TileEventKind = 'rockslide' | 'animalAttack' | 'bushthieves' | 'help
 export interface TileEvent { event: TileEventKind; }
 export type Card = Discovery | TileEvent;                          // a stack holds specimens + events mixed
 const isEvent = (c: Card): c is TileEvent => 'event' in c;
-export type Hotspot = 'base' | 'remote' | 'village';  // POIs: road base (market + research), frontier (remote) research site, road market (village)
+export type Hotspot = 'base' | 'remote' | 'village' | 'riverVillage';  // POIs: road base (market + research), frontier (remote) research site, road market (village), little river-bank village (market; home of the shared boat)
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile / in a car trunk (droppable/pickup-able)
 export interface Equip { kind: EquipKind; gear?: GearItem; }   // a cached item: a boat, or a gear kit (carries its full GearItem)
 export interface Vehicle { pos: number; driver: string | null; trunk: Equip[]; }  // car: a positioned entity you board/leave; drive moves both; trunk = items riding in the car (shared, ≤ TRUNK_SLOTS)
@@ -105,7 +105,7 @@ function landAt(G: GState, cur: string) {
     t.cache.push(...p.samples); G.log.push(`P${cur} stash ${p.samples.length} → ${t.hotspot === 'base' ? 'lab' : 'frontier'} pool`); p.samples.length = 0;
   }
 }
-const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village';  // buy gear/boat/car here (base + road village)
+const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' || t.hotspot === 'riverVillage';  // buy gear/boat/car here (base + road village + river village)
 
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
@@ -245,11 +245,12 @@ function genOnce(seed: number) {
       if (!moved) break;
     }
   };
+  // grow a road run out along BOTH banks from the bridge flanks → substantial road on each side of the river (not just one cell)
+  for (const dd of [-1, 1]) { const c = bcol + dd; if (c < 0 || c >= N) continue; const fi = ix(baseRow, c); if (g[fi] && g[fi].roads !== 0 && !g[fi].bridge) growArm(fi, [0, dd], 4 + Math.floor(rand() * 3)); }
   // TWO road 3-way junctions (Y/T splits, mirroring the river's one 3-way): each junction cell carries three road edges — one back to the network, two outward arms
   const freeDir = (i: number, d: [number, number]) => { const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; return r >= 0 && r < N && c >= 0 && c < N && !g[ix(r, c)]; };
-  const juncCells: number[] = [];
   for (let b = 0; b < 2; b++) {
-    type Cand = { a: number; j: number; arms: [number, number][]; score: number };
+    type Cand = { a: number; j: number; arms: [number, number][] };
     const viable: Cand[] = [];
     for (const a of roadCells()) {                                                // gather every spot that yields a clean 3-way…
       for (const j of nbrs(a).filter(j => !g[j])) {
@@ -257,16 +258,12 @@ function genOnce(seed: number) {
         const fa = CARD.filter(d => !(d[0] === back[0] && d[1] === back[1]) && freeDir(j, d))
                        .sort((p, q) => distCtr(((j / N) | 0) + q[0], (j % N) + q[1]) - distCtr(((j / N) | 0) + p[0], (j % N) + p[1]));   // outward arms first
         if (fa.length < 2) continue;
-        const jr = (j / N) | 0, jc = j % N;
-        // …scored to SPREAD: outward from centre, and far from any junction already placed (so the two don't clump)
-        const spread = juncCells.length ? Math.min(...juncCells.map(p => Math.abs(((p / N) | 0) - jr) + Math.abs((p % N) - jc))) : 0;
-        viable.push({ a, j, arms: fa.slice(0, 2), score: spread * 2 + distCtr(jr, jc) });
+        viable.push({ a, j, arms: fa.slice(0, 2) });
       }
     }
     if (!viable.length) break;
-    viable.sort((x, y) => y.score - x.score);
-    const pick = viable[Math.floor(rand() * Math.max(1, Math.ceil(viable.length * 0.25)))];   // random among the top quarter (spread, but varied)
-    set(pick.j, roadBase()); link(pick.a, pick.j); juncCells.push(pick.j);        // edge back to the network
+    const pick = viable[Math.floor(rand() * viable.length)];   // uniformly choose the junction endpoint among all viable spots (more varied lacing)
+    set(pick.j, roadBase()); link(pick.a, pick.j);                                // edge back to the network
     for (const d of pick.arms) growArm(pick.j, d, 5 + Math.floor(rand() * 4));    // two outward arms (a little longer → more reach) complete the 3-way
   }
 
@@ -335,7 +332,7 @@ function genOnce(seed: number) {
   for (const sd of junctions) {
     const o0 = nbrs(sd).filter(j => g[j].terrain === 'jungle' && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
     let i = o0[Math.floor(rand() * o0.length)]; linkP(sd, i);
-    for (let s = 0; s < 4; s++) { const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }
+    for (let s = 0; s < 7; s++) { const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }   // longer trails (up to 8 tiles) that fizzle into the jungle
 
   // BROOKS: boat-only side-channels — mouth at a river tile, then link consecutive land cells inward (laid as edge overlays, not water)
   let brooksMade = 0; const brookN = 1 + (rand() < 0.5 ? 0 : 1);
@@ -389,6 +386,8 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   const village = rds.slice().sort((a, b) => Math.abs(dist(a, base) - mid) - Math.abs(dist(b, base) - mid))[0];
   if (free(village)) g[village].hotspot = 'village';              // road market, near the middle of the road
   if (free(byFar(allLand.filter(free))[0])) g[byFar(allLand.filter(free))[0]].hotspot = 'remote';   // farthest frontier — the wild 2nd research site (may be isolated → reach by boat)
+  const bank = [...reach].filter(i => free(i) && g[i].terrain !== 'water' && g[i].roads === 0 && nbrs(i).some(j => g[j].terrain === 'water'));   // reachable off-road land hugging the river
+  if (bank.length) g[bank.sort((a, b) => dist(a, base) - dist(b, base))[0]].hotspot = 'riverVillage';   // a little river-bank village (nearest reachable bank) — home of the shared boat
   return true;
 }
 function generateMap(seed: number, dim: number): { map: Tile[]; start: number } {
@@ -778,7 +777,8 @@ export const Expedition: Game<GState> = {
     const { map, start } = generateMap(seed, dim);
     const colorRand = prng((seed ^ 0x5bd1e995) >>> 0);   // deterministic per-match colour stream (independent of type)
     map[start].revealed = true;
-    map[start].equipment.push({ kind: 'boat' });   // one shared boat, cached at base (pick it up to cross water)
+    const rv = map.findIndex(t => t.hotspot === 'riverVillage');   // the shared boat waits at the little river village (falls back to base if the river isn't reachable on foot)
+    map[rv >= 0 ? rv : start].equipment.push({ kind: 'boat' });
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false }])),
