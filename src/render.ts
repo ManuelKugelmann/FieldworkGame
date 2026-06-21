@@ -14,7 +14,7 @@ const EVENT_TEXT: Record<string, string> = {
 };
 export function classifyLog(line: string): Toast | null {
   const mv = line.match(/→ \d+ \(-(\d+)ap/);   // foot/boat move: toast the AP it cost
-  if (mv) return { text: `${line.includes('⛵') ? 'Boat' : 'Move'} · −${mv[1]} AP`, kind: 'info' };
+  if (mv) return { text: `${line.includes('🛶') ? 'Canoe' : 'Move'} · −${mv[1]} AP`, kind: 'info' };
   if (line.startsWith('catalogue ')) {
     const p = line.split(' '), tag = p[1], res = p[p.length - 1];
     if (res === 'collected') return { text: `Catalogued ${prettyTag(tag)} · −1 AP`, kind: 'good' };
@@ -61,7 +61,7 @@ const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const EQUIP_COLOR = '#cfd6c8';
-const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏪', riverVillage: '🛶' };   // lab · frontier · market · river village (match the side-panel icons)
+const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // lab · frontier · village (market) · little river house
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
@@ -148,8 +148,8 @@ export function describeTile(G: GState, i: number): string {
   if (t.blocked) bits.push('cliff edge');
   const research = t.hotspot === 'base' || t.hotspot === 'remote';
   const cars = G.vehicles.filter(v => v.pos === i);
-  for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `${car.kind} (P${car.driver})` : `${car.kind} (empty)`) + tr); }
-  const items = t.equipment.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!));
+  for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '🛶' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `${car.kind} (P${car.driver})` : `${car.kind} (empty)`) + tr); }
+  const items = t.equipment.map(e => e.kind === 'boat' ? '🛶' : gearIcon(e.gear!));
   if (items.length) bits.push('items: ' + items.join(' '));
   if (t.revealed && t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
   if (t.cache.length) bits.push((research ? 'open pool: ' : 'dropped: ') + t.cache.map(prettyFind).join(' '));
@@ -318,7 +318,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     for (const e of t.equipment) {   // cached items take the next free slots
       if (s >= 8) break;
       const sx = slots[s][0], sy = slots[s][1]; s++;
-      if (e.kind === 'boat') { cctx.font = `${CELL * 0.34}px ${EMOJI_FONT}`; cctx.fillText('⛵', sx, sy); }
+      if (e.kind === 'boat') { cctx.font = `${CELL * 0.34}px ${EMOJI_FONT}`; cctx.fillText('🛶', sx, sy); }
       else { const sq = rr * 1.9; cctx.fillStyle = EQUIP_COLOR; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.fillRect(sx - sq / 2, sy - sq / 2, sq, sq); cctx.strokeRect(sx - sq / 2, sy - sq / 2, sq, sq); }
     }
   }

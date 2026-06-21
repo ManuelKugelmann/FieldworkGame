@@ -124,7 +124,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const driving = drove ? (drove.kind === 'motorboat' ? ' 🛥️' : ' 🚗') : '';
     const specimens = mine ? sampleChips(p.samples) : maskedChips(p.samples);   // your in-transit hand (not droppable; force-stashed at a research site)
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
-    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
+    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' 🛶' : ''}` +
       ` ${vp} pts · ${p.prestige} prestige · ${p.money}$<br>` +
       `<span style="opacity:.7">inv:</span> ${specimens}${gearChips(p.gear)}${empties} ` +
       `<span style="opacity:.7">pub:</span> ${p.published.length}</div>`;

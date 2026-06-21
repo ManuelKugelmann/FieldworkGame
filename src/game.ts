@@ -446,7 +446,7 @@ const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   if (p.ap < c) return INVALID_MOVE;
   const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
   const from = p.pos; p.ap -= c; p.pos = t; reveal(G, t, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
-  G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' ⛵' : ''})`);
+  G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' 🛶' : ''})`);
 };
 // generic link-ride: travel up to `steps` tiles along link `k` for 1 AP. car→roads, boat→river channel — same code, different prerequisite.
 function ride(G: GState, ctx: any, random: any, dest: number, from: number, steps: number, k: EdgeKind, allowed: boolean, arrive: () => void, log: string) {
@@ -462,7 +462,7 @@ const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // drive t
 };
 const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boat: up to BOAT_STEPS river-channel tiles per AP
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
-  return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `P${ctx.currentPlayer} ⛵→ ${dest} (-1ap)`);
+  return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `P${ctx.currentPlayer} 🛶→ ${dest} (-1ap)`);
 };
 const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into an unoccupied vehicle (free): a car you're stood on, or a motorboat moored on an adjacent river tile (hop aboard from the bank)
   const p = G.players[ctx.currentPlayer], car = G.vehicles[v];

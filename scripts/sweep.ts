@@ -33,7 +33,7 @@ for (let i = 0; i < MATCHES; i++) {
     else if (line.startsWith('drive')) tally.drives++;
     else if (line.startsWith('helilift')) tally.helilifts++;
     else if (line.startsWith('buy gear')) tally.gear++;
-    if (line.includes('⛵')) tally.boats++;   // boating steps (water/brook crossings)
+    if (line.includes('🛶')) tally.boats++;   // canoe steps (water/brook crossings)
   }
   const scores = (final.ctx.gameover as { scores: Record<string, number> }).scores;
   const vals = Object.values(scores);
