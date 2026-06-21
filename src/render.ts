@@ -61,7 +61,7 @@ const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const EQUIP_COLOR = '#cfd6c8';
-const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: 'H', village: 'M', remote: 'R', riverVillage: 'V' };
+const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏪', riverVillage: '🛶' };   // lab · frontier · market · river village (match the side-panel icons)
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
@@ -283,8 +283,8 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
     if (t.hotspot) {
-      cctx.fillStyle = '#0b0f0a'; cctx.beginPath(); cctx.arc(x + CELL / 2, y + CELL / 2, CELL * 0.27, 0, 7); cctx.fill();
-      cctx.fillStyle = '#e8f0e2'; cctx.font = `bold ${CELL * 0.32}px ui-monospace, monospace`;
+      cctx.fillStyle = 'rgba(11,15,10,0.72)'; cctx.beginPath(); cctx.arc(x + CELL / 2, y + CELL / 2, CELL * 0.31, 0, 7); cctx.fill();   // dark token disc frames the icon for contrast on any terrain
+      cctx.font = `${CELL * 0.36}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
       cctx.fillText(HOTSPOT_LABEL[t.hotspot], x + CELL / 2, y + CELL / 2 + 1);
     }
     if (t.terrain === 'void') continue;

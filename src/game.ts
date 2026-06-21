@@ -421,7 +421,7 @@ function reveal(G: GState, t: number, random: any, cur: string, from: number) {
   const tile = G.map[t]; if (tile.revealed) return;
   tile.revealed = true;
   const pool = G.pools[tile.terrain]; if (!pool) return;
-  const cap = tile.roads ? 0 : tile.paths ? 1 : tile.richness;    // roads = no finds (picked clean); footpaths = at most 1; wild tiles = full richness
+  const cap = tile.roads ? 0 : 1;    // at most ONE find per tile (roads stay picked-clean = 0); the richness-many trials below still gate the CHANCE, so richer terrain is likelier to bear its single find — relative probabilities preserved
   const events: TileEventKind[] = [];
   for (let k = 0; k < tile.richness && pool.length; k++) if (random.Number() < FIND_CHANCE) {
     const c = pool.splice(random.Die(pool.length) - 1, 1)[0];      // each potential slot resolves to a card or comes up empty
