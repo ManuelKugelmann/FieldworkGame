@@ -13,7 +13,8 @@ const isEvent = (c: Card): c is TileEvent => 'event' in c;
 export type Hotspot = 'base' | 'remote' | 'village' | 'riverVillage';  // POIs: road base (market + research), frontier (remote) research site, road market (village), little river-bank village (market; home of the shared boat)
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile / in a car trunk (droppable/pickup-able)
 export interface Equip { kind: EquipKind; gear?: GearItem; }   // a cached item: a boat, or a gear kit (carries its full GearItem)
-export interface Vehicle { pos: number; driver: string | null; trunk: Equip[]; }  // car: a positioned entity you board/leave; drive moves both; trunk = items riding in the car (shared, ≤ TRUNK_SLOTS)
+export type VehicleKind = 'car' | 'motorboat';   // car = positioned road vehicle; motorboat = positioned LARGE-RIVER vehicle (fast channel travel, board from the bank / dock to the bank)
+export interface Vehicle { pos: number; driver: string | null; trunk: Equip[]; kind: VehicleKind; }  // a positioned entity you board/leave; drive moves both; trunk rides along (shared, ≤ TRUNK_SLOTS)
 // GEAR: typed kit that shares the carry slots with specimens. generic g1/g2/g3 = +1/+2/+3 to every catalogue roll; a FIELD kit = bigger bonus but only for its discipline.
 export type GearKind = 'g1' | 'g2' | 'g3' | 'field';
 export interface GearItem { kind: GearKind; field?: DType; }   // field = the discipline a 'field' kit boosts
@@ -31,7 +32,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 6, MAP_SEED = 1, MONSOON_END = 4, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8, TRUNK_SLOTS = 3;  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // TRUNK_SLOTS = items a car can carry in its trunk  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+  COLORS = 4, CATALOGUE_DC = 6, MAP_SEED = 1, MONSOON_END = 4, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8, TRUNK_SLOTS = 3, MOTORBOAT_STEPS = 4;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat covers per AP (faster than the portable canoe's BOAT_STEPS)  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // TRUNK_SLOTS = items a car can carry in its trunk  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
@@ -44,6 +45,7 @@ const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more
 
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, ruins: 4, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare; ruins are a deep dig site
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
+const isLandT = (t: Tile) => t.terrain !== 'water' && t.terrain !== 'void';  // any walkable land terrain
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
 const grass = (map: Tile[], a: number, b: number) => map[a].terrain === 'grassland' || map[b].terrain === 'grassland';  // grassland = fast going (path-like)
 const dirBit = (a: number, b: number) => b === a - N ? 1 : b === a + N ? 4 : b === a + 1 ? 2 : 8;  // N1 E2 S4 W8
@@ -89,7 +91,7 @@ const riverStepDist = (map: Tile[], from: number, to: number) => linkDist(map, f
 // AP a legal target costs, for the UI. Foot/boat = the step cost; car = fractional (1 AP buys CAR_STEPS road tiles)
 export function targetAP(G: GState, pid: string, a: { move?: string; args?: unknown[] }): number {
   const p = G.players[pid];
-  if (a.move === 'drive') { const car = myVehicle(G, pid); const d = car ? roadStepDist(G.map, car.pos, a.args![0] as number) : Infinity; return Number.isFinite(d) ? d / CAR_STEPS : 1; }
+  if (a.move === 'drive') { const car = myVehicle(G, pid); if (!car) return 1; const boat = car.kind === 'motorboat'; const d = (boat ? riverStepDist : roadStepDist)(G.map, car.pos, a.args![0] as number); return Number.isFinite(d) ? d / (boat ? MOTORBOAT_STEPS : CAR_STEPS) : 1; }
   if (a.move === 'boatRun') { const d = riverStepDist(G.map, p.pos, a.args![0] as number); return Number.isFinite(d) ? d / BOAT_STEPS : 1; }   // 1 AP buys BOAT_STEPS channel tiles
   if (a.move === 'move') return apCost(G, p.pos, a.args![0] as number, p.boat);
   return 0;
@@ -419,7 +421,7 @@ function reveal(G: GState, t: number, random: any, cur: string, from: number) {
   const tile = G.map[t]; if (tile.revealed) return;
   tile.revealed = true;
   const pool = G.pools[tile.terrain]; if (!pool) return;
-  const cap = (tile.roads || tile.paths) ? 1 : tile.richness;     // road/trail tiles hold at most ONE find
+  const cap = tile.roads ? 0 : tile.paths ? 1 : tile.richness;    // roads = no finds (picked clean); footpaths = at most 1; wild tiles = full richness
   const events: TileEventKind[] = [];
   for (let k = 0; k < tile.richness && pool.length; k++) if (random.Number() < FIND_CHANCE) {
     const c = pool.splice(random.Die(pool.length) - 1, 1)[0];      // each potential slot resolves to a card or comes up empty
@@ -453,25 +455,33 @@ function ride(G: GState, ctx: any, random: any, dest: number, from: number, step
   p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
   G.log.push(log);
 }
-const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // car: up to CAR_STEPS road tiles per AP (player + car travel together)
-  const car = myVehicle(G, ctx.currentPlayer);
-  return ride(G, ctx, random, dest, car ? car.pos : -1, CAR_STEPS, 'roads', !!car, () => { if (car) car.pos = dest; }, `drive→${dest}`);
+const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // drive the boarded vehicle: a car along roads (CAR_STEPS), a motorboat along the large river (MOTORBOAT_STEPS) — player + vehicle travel together
+  const v = myVehicle(G, ctx.currentPlayer); if (!v) return INVALID_MOVE;
+  const boat = v.kind === 'motorboat';
+  return ride(G, ctx, random, dest, v.pos, boat ? MOTORBOAT_STEPS : CAR_STEPS, boat ? 'rivers' : 'roads', true, () => { v.pos = dest; }, `drive ${boat ? '🛥' : '🚗'}→${dest}`);
 };
 const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boat: up to BOAT_STEPS river-channel tiles per AP
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
   return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `P${ctx.currentPlayer} ⛵→ ${dest} (-1ap)`);
 };
-const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into a co-located, unoccupied car (free)
+const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into an unoccupied vehicle (free): a car you're stood on, or a motorboat moored on an adjacent river tile (hop aboard from the bank)
   const p = G.players[ctx.currentPlayer], car = G.vehicles[v];
-  if (G.epilogue || !car || car.pos !== p.pos || car.driver !== null) return INVALID_MOVE;
-  car.driver = ctx.currentPlayer;
-  G.log.push(`P${ctx.currentPlayer} board car@${car.pos}`);
+  if (G.epilogue || !car || car.driver !== null) return INVALID_MOVE;
+  const aboard = car.pos === p.pos, hop = car.kind === 'motorboat' && nbrs(p.pos).includes(car.pos);
+  if (!aboard && !hop) return INVALID_MOVE;
+  car.driver = ctx.currentPlayer; if (hop) p.pos = car.pos;   // step off the bank onto the moored motorboat
+  G.log.push(`P${ctx.currentPlayer} board ${car.kind}@${car.pos}`);
 };
-const leave: Move<GState> = ({ G, ctx }) => {   // step out; the car stays where it is (free)
-  const car = myVehicle(G, ctx.currentPlayer);
+const leave: Move<GState> = ({ G, ctx }) => {   // step out (free): a car stays where it is; a motorboat docks you to an adjacent bank tile
+  const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
   if (G.epilogue || !car) return INVALID_MOVE;
+  if (car.kind === 'motorboat') {
+    const dock = nbrs(p.pos).find(j => isLandT(G.map[j]) && !onBlocked(G.map, p.pos, j));   // step ashore
+    if (dock === undefined) return INVALID_MOVE;   // mid-river with no reachable bank → drive to a dockable spot first
+    p.pos = dock;
+  }
   car.driver = null;
-  G.log.push(`P${ctx.currentPlayer} leave car@${car.pos}`);
+  G.log.push(`P${ctx.currentPlayer} leave ${car.kind}@${car.pos}`);
 };
 // drop/pickup cache items (boat or any gear kit) on the current tile (free). At the BASE this tile is the communal lab stash.
 const carHere = (G: GState, pos: number) => G.vehicles.find(v => v.pos === pos);   // a co-located car (for trunk stash/unstash)
@@ -627,13 +637,13 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
   const p = G.players[ctx.currentPlayer]; if (p.ap < 1 || !goals.length) return null;
   const here = nearestDist(goals, p.pos);
   if (here < 3) return null;   // only bother with the car when the goal is far enough that roads save real distance
-  const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
+  const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer && v.kind === 'car');   // the heuristic only drives ground cars (motorboats are a human tool)
   if (myCar) {                                                          // driving → hop to the best closer road cell, else step out
     let best = -1, bd = here;
     for (const c of roadReach(G.map, myCar.pos, CAR_STEPS)) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
     return best >= 0 ? { move: 'drive', args: [best] } : { move: 'leave', args: [] };
   }
-  const vi = G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null);   // parked car underfoot → board if roads lead closer
+  const vi = G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && v.kind === 'car');   // parked car underfoot → board if roads lead closer
   if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
   return null;
 }
@@ -680,7 +690,7 @@ const buy: Move<GState> = ({ G, ctx }, kind: GearKind | 'boat' | 'car' = 'g1', f
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
   if (G.epilogue || !isMarket(tile)) return INVALID_MOVE;
   if (kind === 'boat') { if (p.boat || p.money < BOAT_PRICE) return INVALID_MOVE; p.money -= BOAT_PRICE; p.boat = true; G.log.push(`buy boat (-${BOAT_PRICE}$)`); return; }
-  if (kind === 'car') { if (p.money < CAR_PRICE) return INVALID_MOVE; p.money -= CAR_PRICE; G.vehicles.push({ pos: p.pos, driver: null, trunk: [] }); G.log.push(`buy car@${p.pos} (-${CAR_PRICE}$)`); return; }
+  if (kind === 'car') { if (p.money < CAR_PRICE) return INVALID_MOVE; p.money -= CAR_PRICE; G.vehicles.push({ pos: p.pos, driver: null, trunk: [], kind: 'car' }); G.log.push(`buy car@${p.pos} (-${CAR_PRICE}$)`); return; }
   const price = GEAR_PRICE[kind];
   if (p.gear.length >= GEAR_MAX || p.money < price) return INVALID_MOVE;
   if (kind === 'field' && !field) return INVALID_MOVE;
@@ -703,7 +713,7 @@ export const enumerate = (G: GState, ctx: any) => {
   if (!G.epilogue) {                                                  // field season
     const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
     nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });
-    if (p.ap >= 1 && myCar) roadReach(G.map, myCar.pos, CAR_STEPS).forEach(d => out.push({ move: 'drive', args: [d] }));
+    if (p.ap >= 1 && myCar) (myCar.kind === 'motorboat' ? riverReach(G.map, myCar.pos, MOTORBOAT_STEPS) : roadReach(G.map, myCar.pos, CAR_STEPS)).forEach(d => out.push({ move: 'drive', args: [d] }));
     if (p.ap >= 1 && p.boat) riverReach(G.map, p.pos, BOAT_STEPS).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
     G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
@@ -777,13 +787,16 @@ export const Expedition: Game<GState> = {
     const { map, start } = generateMap(seed, dim);
     const colorRand = prng((seed ^ 0x5bd1e995) >>> 0);   // deterministic per-match colour stream (independent of type)
     map[start].revealed = true;
-    const rv = map.findIndex(t => t.hotspot === 'riverVillage');   // the shared boat waits at the little river village (falls back to base if the river isn't reachable on foot)
+    const rv = map.findIndex(t => t.hotspot === 'riverVillage');   // the shared canoe waits at the little river village (falls back to base if the river isn't reachable on foot)
     map[rv >= 0 ? rv : start].equipment.push({ kind: 'boat' });
+    const moor = rv >= 0 ? nbrs(rv).find(j => map[j] && map[j].terrain === 'water') : undefined;   // moor a shared motorboat on the large river beside the village
+    const vehicles: Vehicle[] = Array.from({ length: ctx.numPlayers }, () => ({ pos: start, driver: null, trunk: [], kind: 'car' as const }));   // one shared car per player, at base
+    if (moor !== undefined) vehicles.push({ pos: moor, driver: null, trunk: [], kind: 'motorboat' });
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false }])),
       map, cols: N, rows: N, base: start,
-      vehicles: Array.from({ length: ctx.numPlayers }, () => ({ pos: start, driver: null, trunk: [] as Equip[] })),   // one shared car per player, parked at base
+      vehicles,
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand) },
       ...(() => { const deck = buildGoalDeck(prng((seed ^ 0x9e3779b1) >>> 0)); return { goals: deck.slice(0, POOL_SIZE), goalDeck: deck.slice(POOL_SIZE) }; })(),   // deal the open-question pool; rest is the refill deck
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],

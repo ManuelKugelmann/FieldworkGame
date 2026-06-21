@@ -124,9 +124,9 @@ export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: Player
   if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${g.label} (+${g.prestige}P)` : 'Publish'; }
   if (a.move === 'buy') { const k = a.args![0] as string, f = a.args![1] as Discovery['type'] | undefined;
     if (k === 'boat') return 'Buy boat (−5$)'; if (k === 'car') return 'Buy car (−8$)';
-    return k === 'field' ? `Buy ${DTYPE_SYMBOL[f!]} kit (−${GEAR_PRICE.field}$)` : `Buy 🔧+${k[1]} (−${GEAR_PRICE[k as GearItem['kind']]}$)`; }
-  if (a.move === 'board') return 'Board car';
-  if (a.move === 'leave') return 'Leave car';
+    return k === 'field' ? `Buy 🧪${DTYPE_SYMBOL[f!]} (−${GEAR_PRICE.field}$)` : `Buy ${GEAR_GLYPH[k]}+${k[1]} (−${GEAR_PRICE[k as GearItem['kind']]}$)`; }
+  if (a.move === 'board') return 'Board';
+  if (a.move === 'leave') return 'Leave';
   if (a.move === 'drop') { const s = a.args![0]; return s === 'boat' ? 'Drop boat' : `Drop ${p ? gearIcon(p.gear[s as number]) : 'gear'}`; }
   if (a.move === 'pickup') { const s = a.args![0]; const e = typeof s === 'number' ? tile.equipment[s] : undefined;
     return !e || e.kind === 'boat' ? 'Pick up boat' : `Pick up ${gearIcon(e.gear!)}`; }
@@ -148,7 +148,7 @@ export function describeTile(G: GState, i: number): string {
   if (t.blocked) bits.push('cliff edge');
   const research = t.hotspot === 'base' || t.hotspot === 'remote';
   const cars = G.vehicles.filter(v => v.pos === i);
-  for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `car (P${car.driver})` : 'car (empty)') + tr); }
+  for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `${car.kind} (P${car.driver})` : `${car.kind} (empty)`) + tr); }
   const items = t.equipment.map(e => e.kind === 'boat' ? '⛵' : gearIcon(e.gear!));
   if (items.length) bits.push('items: ' + items.join(' '));
   if (t.revealed && t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
@@ -161,8 +161,9 @@ export function sampleChips(ds: Discovery[]): string {
   if (!ds.length) return '<span style="opacity:.5">none</span>';
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
-// gear kit icons (public — opponents see your gear). 🔧+N = generic; 🔬 + discipline = field kit
-export const gearIcon = (g: GearItem) => g.kind === 'field' ? `🔬${DTYPE_SYMBOL[g.field!]}` : `🔧${g.kind[1]}`;
+// gear kit icons (public — opponents see your gear). lab-bench symbols by tier; 🧪 + discipline = field kit
+export const GEAR_GLYPH: Record<string, string> = { g1: '🔍', g2: '🔬', g3: '⚗️' };   // lens / microscope / lab still (+1 / +2 / +3)
+export const gearIcon = (g: GearItem) => g.kind === 'field' ? `🧪${DTYPE_SYMBOL[g.field!]}` : GEAR_GLYPH[g.kind];
 export function gearChips(gear: GearItem[]): string {
   return gear.map(g => `<span class="chip gear" title="${g.kind === 'field' ? `${g.field} field kit` : `+${g.kind[1]} to every catalogue`}">${gearIcon(g)}</span>`).join('');
 }
@@ -230,11 +231,11 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null) {
+function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null, glyph = '🚗') {
   const fs = CELL * 0.4, cy = y + CELL * 0.64;           // below centre, nudged toward the tile centre
   cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
-  cctx.globalAlpha = driver ? 1 : 0.55;                 // empty car dimmer
-  cctx.fillText('🚗', x + CELL / 2, cy);
+  cctx.globalAlpha = driver ? 1 : 0.55;                 // empty vehicle dimmer
+  cctx.fillText(glyph, x + CELL / 2, cy);
   cctx.globalAlpha = 1;
   if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL / 2 + fs * 0.5, cy - fs * 0.3, 2.6, 0, 7); cctx.fill(); cctx.stroke(); }
 }
@@ -325,7 +326,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   // 4) vehicles (top-right; driver-coloured when occupied)
   for (const v of G.vehicles) {
     const c = v.pos % G.cols, r = (v.pos / G.cols) | 0;
-    carGlyph(cctx, c * CELL, r * CELL, v.driver !== null ? PLAYER_COLOR[+v.driver % 4] : null);
+    carGlyph(cctx, c * CELL, r * CELL, v.driver !== null ? PLAYER_COLOR[+v.driver % 4] : null, v.kind === 'motorboat' ? '🛥️' : '🚗');
   }
 
   // 5) legal-target rings (solid = walk, dashed = drive) + AP cost label (fractional for the car)

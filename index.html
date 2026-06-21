@@ -24,8 +24,15 @@
       }
       button:hover { background: #1d3d22; }
       button:disabled { opacity: .4; cursor: default; }
-      .cols { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
-      @media (min-width: 760px) { .cols { flex-wrap: nowrap; } }   /* keep the stats beside the field, never wrapped below it */
+      .cols { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+      @media (min-width: 1024px) { .cols { flex-wrap: nowrap; } }   /* research | board | stats, side by side on wide screens */
+      .research { flex: 0 1 13rem; min-width: 11rem; max-width: 14rem; display: flex; flex-direction: column; order: -1; }
+      .research h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
+      #plan { display: flex; flex-direction: column; gap: .35rem; }
+      @media (max-width: 1023px) {   /* mobile: research band sits on top, laid out horizontally */
+        .research { flex-basis: 100%; max-width: none; }
+        #plan { flex-direction: row; flex-wrap: wrap; gap: .4rem; justify-content: center; }
+      }
       .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
       .inspectwrap { width: 100%; max-width: 30rem; margin-top: .45rem; }
       #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
@@ -46,7 +53,6 @@
       #log { max-height: 32vh; overflow: auto; font-size: .72rem; color: #9fc69a; }
       .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
       #status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; min-height: 1.2rem; }
-      .plan { display: flex; gap: .5rem; margin-bottom: .4rem; flex-wrap: wrap; justify-content: center; }
       .pat { display: flex; align-items: center; gap: .35rem; padding: .18rem .5rem; border: 1px solid #1d3d22; border-radius: 5px; font-size: .74rem; color: #9fc69a; }
       .pat.ready { border-color: #3a7a3f; background: #14301a; color: #bdebbd; }
       .pat .nm { font-weight: 600; text-transform: capitalize; }
@@ -72,13 +78,14 @@
     <div id="toasts" class="toasts"></div>
     <h1>Expedition: Verdant Prime <span class="badge">canvas viewer · lean</span></h1>
     <div class="cols">
+      <div class="research"><h2>Research</h2><div id="plan"></div></div>
       <div class="boardwrap">
-        <div id="plan" class="plan"></div>
         <canvas id="board"></canvas>
         <div class="panel inspectwrap"><div id="inspect">hover a tile</div></div>
       </div>
       <div class="side">
         <div id="status"></div>
+        <div class="panel"><h2>Research pools</h2><div id="pools"></div></div>
         <div class="panel"><h2>Players</h2><div id="players"></div></div>
         <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>

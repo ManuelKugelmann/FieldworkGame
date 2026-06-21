@@ -111,11 +111,17 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
       `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${threat}${pat.ready ? ' ✓' : ''}</span>`;
   }).join('');
 
+  const remoteT = G.map.findIndex(t => t.hotspot === 'remote');   // the two shared open pools (community cards): base lab + frontier research site
+  const poolRow = (label: string, ds: typeof G.map[number]['cache']) =>
+    `<div class="pcard"><span class="who">${label}</span> <span style="opacity:.7">${ds.length}</span> ${ds.length ? sampleChips(ds) : '<span style="opacity:.5">empty</span>'}</div>`;
+  $('pools').innerHTML = poolRow('🔬 Lab (base)', G.map[G.base].cache) + (remoteT >= 0 ? poolRow('⛺ Frontier', G.map[remoteT].cache) : '');
+
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';
     const mine = human.has(id);   // you only see colours of the seats you control; opponents' are concealed
     const vp = p.prestige + Math.floor(p.money / 4);
-    const driving = G.vehicles.some(v => v.driver === id) ? ' 🚗' : '';
+    const drove = G.vehicles.find(v => v.driver === id);
+    const driving = drove ? (drove.kind === 'motorboat' ? ' 🛥️' : ' 🚗') : '';
     const specimens = mine ? sampleChips(p.samples) : maskedChips(p.samples);   // your in-transit hand (not droppable; force-stashed at a research site)
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' ⛵' : ''}` +
