@@ -255,10 +255,10 @@ function genOnce(seed: number) {
     }
   };
   // grow a road run out along BOTH banks from the bridge flanks → substantial road on each side of the river (not just one cell)
-  for (const dd of [-1, 1]) { const c = bcol + dd; if (c < 0 || c >= N) continue; const fi = ix(baseRow, c); if (g[fi] && g[fi].roads !== 0 && !g[fi].bridge) growArm(fi, [0, dd], 4 + Math.floor(rand() * 3)); }
+  for (const dd of [-1, 1]) { const c = bcol + dd; if (c < 0 || c >= N) continue; const fi = ix(baseRow, c); if (g[fi] && g[fi].roads !== 0 && !g[fi].bridge) growArm(fi, [0, dd], 2 + Math.floor(rand() * 2)); }
   // TWO road 3-way junctions (Y/T splits, mirroring the river's one 3-way): each junction cell carries three road edges — one back to the network, two outward arms
   const freeDir = (i: number, d: [number, number]) => { const r = ((i / N) | 0) + d[0], c = (i % N) + d[1]; return r >= 0 && r < N && c >= 0 && c < N && !g[ix(r, c)]; };
-  for (let b = 0; b < 2; b++) {
+  for (let b = 0; b < 1; b++) {   // ONE 3-way junction (was 2) → fewer road T-junctions, less road
     type Cand = { a: number; j: number; arms: [number, number][] };
     const viable: Cand[] = [];
     for (const a of roadCells()) {                                                // gather every spot that yields a clean 3-way…
@@ -273,7 +273,7 @@ function genOnce(seed: number) {
     if (!viable.length) break;
     const pick = viable[Math.floor(rand() * viable.length)];   // uniformly choose the junction endpoint among all viable spots (more varied lacing)
     set(pick.j, roadBase()); link(pick.a, pick.j);                                // edge back to the network
-    for (const d of pick.arms) growArm(pick.j, d, 5 + Math.floor(rand() * 4));    // two outward arms (a little longer → more reach) complete the 3-way
+    for (const d of pick.arms) growArm(pick.j, d, 3 + Math.floor(rand() * 3));    // shorter outward arms complete the 3-way
   }
 
   // flood jungle, carve rocky + grassland patches (all passable land; rocky/jungle = 2 AP bushwhack)
