@@ -274,8 +274,8 @@ function genOnce(seed: number) {
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'jungle');
   const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'jungle' && g[i].roads === 0) set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'jungle' && g[j].roads === 0); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };   // never carve over a road overlay (set() would wipe its edges)
   const scale = (N * N) / 100;   // patch counts scale with board area (10×10 … 15×15)
-  carve('rocky', Math.round(6 * scale), 4); carve('grassland', Math.round(8 * scale), 5);
-  carve('ruins', Math.max(1, Math.round(2 * scale)), 2);   // a few small arch-rich dig sites carved out of the jungle
+  carve('rocky', Math.round(9 * scale), 4); carve('grassland', Math.round(9 * scale), 4);   // bigger rocky/grass share → more balanced biomes (jungle stays the remainder)
+  carve('ruins', Math.max(1, Math.round(scale)), 2);   // a few small arch-rich dig sites (topped up to RUINS_N below)
   // CLIFFS: 1–2 uncrossable edges on some land tiles (plain land↔land only — never roads/water/bridges, so the laid networks stay intact)
   const isLand = (i: number) => { const t = g[i].terrain; return t === 'jungle' || t === 'rocky' || t === 'grassland' || t === 'ruins'; };
   for (let i = 0; i < N * N; i++) {
@@ -316,10 +316,10 @@ function genOnce(seed: number) {
   while (bq2.length) { const u = bq2.shift()!; const d = bdist.get(u)!; for (const v of nbrs(u)) if (!bdist.has(v) && (g[u].roads & dirBit(u, v))) { bdist.set(v, d + 1); bq2.push(v); } }
   let base = bridges[0], bestS = Infinity;
   for (const [i, d] of bdist) if (g[i].roads !== 0 && !g[i].bridge) { const s = Math.abs(d - 3); if (s < bestS) { bestS = s; base = i; } }
-  // guarantee a couple of ruins survive in the active area (carve can lose them all to the void step)
-  { let rn = 0; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'ruins') rn++;
+  // guarantee exactly RUINS_N ruins survive in the active area (carve can lose them to the void step)
+  { const RUINS_N = 3; let rn = 0; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'ruins') rn++;
     const cand: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'jungle' && g[i].roads === 0 && !g[i].bridge) cand.push(i);
-    while (rn < 2 && cand.length) { set(cand.splice(Math.floor(rand() * cand.length), 1)[0], 'ruins'); rn++; } }
+    while (rn < RUINS_N && cand.length) { set(cand.splice(Math.floor(rand() * cand.length), 1)[0], 'ruins'); rn++; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
   // FOOTPATH JUNCTIONS: trails seed from foot bridges, anywhere on the roads, and every special location; they fizzle out in the jungle

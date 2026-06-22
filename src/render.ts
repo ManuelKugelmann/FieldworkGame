@@ -40,6 +40,7 @@ export let CELL = 46;              // CSS px per tile — recomputed responsivel
 export const MIN_CELL = 16;        // floor so the board stays usable on tiny viewports
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
 const PAWN_DIAG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];   // per-player off-centre diagonal: P0 TL · P1 TR · P2 BL · P3 BR
+const hash01 = (i: number, k: number) => { let h = (Math.imul(i + 1, 2654435761) ^ Math.imul(k + 1, 40503)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return ((h >>> 8) & 0xffff) / 0xffff; };   // deterministic per-tile jitter
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff6f5c', bot: '#57e466', arch: '#bb9cff' };   // brighter, stronger discovery colours
 export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: '💎', zoo: '🐾', bot: '🌿', arch: '🏺' };   // type icon — used everywhere instead of the geo/zoo/bot/arch words
 const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo' || s === 'bot' || s === 'arch';
@@ -64,6 +65,7 @@ const GRAY_BIOME = Object.fromEntries(
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
+const CLIFF_FILL = 'rgba(20,18,16,0.5)';   // cliff band — covers ~1/3 of the affected tile side (matches printed tiles)
 const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // lab · frontier · village (market) · little river house
 const BIOME_ICON: Partial<Record<Tile['terrain'], string>> = { grassland: '🌾', jungle: '🌴', rocky: '🪨', ruins: '🏛️', water: '🌊' };   // small per-tile biome marker (corner)
@@ -228,12 +230,14 @@ function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, c
 }
 
 // bold black bar along the FULL shared border between a & b = impassable cliff edge
+// cliff: a band covering ~1/3 of tile `a` on the affected side (toward `b` = a+1 East or a+cols South), with a crisp black edge line
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
-  const ca = a % G.cols, ra = (a / G.cols) | 0, cb = b % G.cols, rb = (b / G.cols) | 0;
-  cctx.strokeStyle = CLIFF_LINE; cctx.lineWidth = Math.max(4, CELL * 0.12); cctx.setLineDash([]); cctx.lineCap = 'butt';
+  const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34, east = b === a + 1;
+  cctx.fillStyle = CLIFF_FILL;
+  if (east) cctx.fillRect(x + CELL - third, y, third, CELL); else cctx.fillRect(x, y + CELL - third, CELL, third);
+  cctx.strokeStyle = CLIFF_LINE; cctx.lineWidth = Math.max(3, CELL * 0.1); cctx.setLineDash([]); cctx.lineCap = 'butt';
   cctx.beginPath();
-  if (ra === rb) { const x = Math.max(ca, cb) * CELL; cctx.moveTo(x, ra * CELL); cctx.lineTo(x, ra * CELL + CELL); }   // full vertical border (E/W)
-  else { const y = Math.max(ra, rb) * CELL; cctx.moveTo(ca * CELL, y); cctx.lineTo(ca * CELL + CELL, y); }            // full horizontal border (N/S)
+  if (east) { cctx.moveTo(x + CELL, y); cctx.lineTo(x + CELL, y + CELL); } else { cctx.moveTo(x, y + CELL); cctx.lineTo(x + CELL, y + CELL); }
   cctx.stroke();
 }
 
@@ -296,11 +300,13 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillText(HOTSPOT_LABEL[t.hotspot], x + CELL / 2, y + CELL / 2 + 1);
     }
     if (t.terrain === 'void') continue;
-    const bi = BIOME_ICON[t.terrain];   // small biome marker hugging the top-left corner
+    const bi = BIOME_ICON[t.terrain];   // 3 biome markers scattered (deterministically jittered) across the tile as texture
     if (bi && CELL >= 16) {
-      cctx.textAlign = 'left'; cctx.textBaseline = 'top'; cctx.globalAlpha = 0.9;
-      if (t.terrain === 'water') { cctx.font = `bold ${CELL * 0.3}px ui-monospace, monospace`; cctx.fillStyle = '#7fc4e8'; cctx.fillText('≈', x + CELL * 0.07, y + CELL * 0.02); }
-      else { cctx.font = `${CELL * 0.24}px ${EMOJI_FONT}`; cctx.fillText(bi, x + CELL * 0.04, y + CELL * 0.03); }
+      const water = t.terrain === 'water';
+      cctx.textAlign = 'center'; cctx.textBaseline = 'middle'; cctx.globalAlpha = 0.8;
+      cctx.font = water ? `bold ${CELL * 0.26}px ui-monospace, monospace` : `${CELL * 0.2}px ${EMOJI_FONT}`;
+      if (water) cctx.fillStyle = '#7fc4e8';
+      for (let k = 0; k < 3; k++) cctx.fillText(water ? '≈' : bi, x + CELL * (0.22 + hash01(i, k * 2) * 0.56), y + CELL * (0.22 + hash01(i, k * 2 + 1) * 0.56));
       cctx.globalAlpha = 1;
     }
     // 8 perimeter slots (4 corners + 4 edge midpoints): discovery dots first, then cached gear/boat
