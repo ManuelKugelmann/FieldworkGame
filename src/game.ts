@@ -316,6 +316,10 @@ function genOnce(seed: number) {
   while (bq2.length) { const u = bq2.shift()!; const d = bdist.get(u)!; for (const v of nbrs(u)) if (!bdist.has(v) && (g[u].roads & dirBit(u, v))) { bdist.set(v, d + 1); bq2.push(v); } }
   let base = bridges[0], bestS = Infinity;
   for (const [i, d] of bdist) if (g[i].roads !== 0 && !g[i].bridge) { const s = Math.abs(d - 3); if (s < bestS) { bestS = s; base = i; } }
+  // guarantee a couple of ruins survive in the active area (carve can lose them all to the void step)
+  { let rn = 0; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'ruins') rn++;
+    const cand: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'jungle' && g[i].roads === 0 && !g[i].bridge) cand.push(i);
+    while (rn < 2 && cand.length) { set(cand.splice(Math.floor(rand() * cand.length), 1)[0], 'ruins'); rn++; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
 
   // FOOTPATH JUNCTIONS: trails seed from foot bridges, anywhere on the roads, and every special location; they fizzle out in the jungle
@@ -330,7 +334,7 @@ function genOnce(seed: number) {
   }
   const roadAll: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].roads !== 0) roadAll.push(i);
   const junctions = [...footBr];
-  for (let k = 0; k < 5 && roadAll.length; k++) junctions.push(roadAll[Math.floor(rand() * roadAll.length)]);   // anywhere on the roads
+  for (let k = 0; k < 9 && roadAll.length; k++) junctions.push(roadAll[Math.floor(rand() * roadAll.length)]);   // more trail seeds anywhere on the roads
   for (let i = 0; i < N * N; i++) if (g[i].hotspot) junctions.push(i);   // every special location
   for (const sd of junctions) {
     const o0 = nbrs(sd).filter(j => g[j].terrain === 'jungle' && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
@@ -338,8 +342,8 @@ function genOnce(seed: number) {
     for (let s = 0; s < 7; s++) { const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }   // longer trails (up to 8 tiles) that fizzle into the jungle
 
   // BROOKS: boat-only side-channels — mouth at a river tile, then link consecutive land cells inward (laid as edge overlays, not water)
-  let brooksMade = 0; const brookN = 1 + (rand() < 0.5 ? 0 : 1);
-  for (let att = 0; att < 14 && brooksMade < brookN; att++) {
+  let brooksMade = 0; const brookN = 2 + (rand() < 0.5 ? 0 : 1);   // more brooks (2–3)
+  for (let att = 0; att < 22 && brooksMade < brookN; att++) {
     const rt = allRiver[Math.floor(rand() * allRiver.length)];
     const mouths = nbrs(rt).filter(j => g[j].terrain === 'jungle' && !(g[rt].blocked & dirBit(rt, j)));
     if (!mouths.length) continue;

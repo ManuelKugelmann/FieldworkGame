@@ -104,8 +104,8 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
         : (c.icon ?? '·');
       return `<span class="cell ${c.state}">${inner}</span>`;
     }).join('');
-    return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.label}</span>` +
-      `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${pat.ready ? ' ✓' : ''}</span>`;
+    return `<span class="pat${pat.ready ? ' ready' : ''}">` +
+      `<span class="cells">${cells}</span><span class="rw">${pat.reward}${pat.ready ? ' ✓' : ''}</span></span>`;
   }).join('');
 
   const remoteT = G.map.findIndex(t => t.hotspot === 'remote');   // the two shared open pools (community cards): base lab + frontier research site

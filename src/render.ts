@@ -39,6 +39,7 @@ export function logToasts(fromIdx: number, log: string[]): Toast[] {
 export let CELL = 46;              // CSS px per tile — recomputed responsively in fitCanvas()
 export const MIN_CELL = 16;        // floor so the board stays usable on tiny viewports
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
+const PAWN_DIAG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];   // per-player off-centre diagonal: P0 TL · P1 TR · P2 BL · P3 BR
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff6f5c', bot: '#57e466', arch: '#bb9cff' };   // brighter, stronger discovery colours
 export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: '💎', zoo: '🐾', bot: '🌿', arch: '🏺' };   // type icon — used everywhere instead of the geo/zoo/bot/arch words
 const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo' || s === 'bot' || s === 'arch';
@@ -50,7 +51,7 @@ const COL_SQUARE = ['🟥', '🟩', '🟨', '🟪'];   // the 4 discovery colour
 export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ? DTYPE_SYMBOL[p.type] : ''}${p.color !== undefined ? COL_SQUARE[p.color] : ''}`).join(' + ');
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
-  grassland: '#5d6e3a', jungle: '#2c4a20', rocky: '#565659', ruins: '#7a6a45', water: '#1d4c79', void: '#0b0f0a',
+  grassland: '#6f7a30', jungle: '#1f5247', rocky: '#5e5e68', ruins: '#6e603a', water: '#244a5c', void: '#0b0f0a',  // grass yellow-green · forest teal-green · rock silver-grey · ruins beige-gold · water swampy blue
 };
 // grayish biome tint for the potential-discovery dots (the token pool is biome-specific, so the dots hint at the biome)
 function grayishBiome(hex: string): string {
@@ -67,7 +68,7 @@ const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // lab · frontier · village (market) · little river house
 const BIOME_ICON: Partial<Record<Tile['terrain'], string>> = { grassland: '🌾', jungle: '🌴', rocky: '🪨', ruins: '🏛️', water: '🌊' };   // small per-tile biome marker (corner)
 // discovery BACK-SIDE / pool colour — a brighter tint of the biome's tile colour (so the back reads as "from this biome")
-const BIOME_POOL: Partial<Record<Tile['terrain'], string>> = { grassland: '#8fa84e', jungle: '#4a8a35', rocky: '#8a8a90', ruins: '#b0975a', water: '#3a78b0' };
+const BIOME_POOL: Partial<Record<Tile['terrain'], string>> = { grassland: '#b2c43f', jungle: '#2e8f74', rocky: '#b6b6c2', ruins: '#cbb46a', water: '#3f7593' };  // brighter biome tints (grass yellow-green · forest greenish-teal · rock silver · ruins beige-gold · water swampy blue)
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
@@ -239,6 +240,7 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null, glyph = '🚗') {
   const fs = CELL * 0.36, cy = y + CELL * 0.82;          // hugging the bottom edge of the tile (clear of the centre discovery/pawn)
+  cctx.fillStyle = 'rgba(11,15,10,0.32)'; cctx.beginPath(); cctx.arc(x + CELL / 2, cy, fs * 0.62, 0, 7); cctx.fill();   // contrast disc so the boat/car reads on top of water + river links
   cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
   cctx.globalAlpha = driver ? 1 : 0.55;                 // empty vehicle dimmer
   cctx.fillText(glyph, x + CELL / 2, cy);
@@ -295,7 +297,12 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     }
     if (t.terrain === 'void') continue;
     const bi = BIOME_ICON[t.terrain];   // small biome marker hugging the top-left corner
-    if (bi && CELL >= 16) { cctx.font = `${CELL * 0.24}px ${EMOJI_FONT}`; cctx.textAlign = 'left'; cctx.textBaseline = 'top'; cctx.globalAlpha = 0.85; cctx.fillText(bi, x + CELL * 0.04, y + CELL * 0.03); cctx.globalAlpha = 1; }
+    if (bi && CELL >= 16) {
+      cctx.textAlign = 'left'; cctx.textBaseline = 'top'; cctx.globalAlpha = 0.9;
+      if (t.terrain === 'water') { cctx.font = `bold ${CELL * 0.3}px ui-monospace, monospace`; cctx.fillStyle = '#7fc4e8'; cctx.fillText('≈', x + CELL * 0.07, y + CELL * 0.02); }
+      else { cctx.font = `${CELL * 0.24}px ${EMOJI_FONT}`; cctx.fillText(bi, x + CELL * 0.04, y + CELL * 0.03); }
+      cctx.globalAlpha = 1;
+    }
     // 8 perimeter slots (4 corners + 4 edge midpoints): discovery dots first, then cached gear/boat
     const d = Math.max(6, CELL * 0.17), m = CELL / 2, rr = Math.max(2.5, CELL * 0.075);
     const corners = [[x + d, y + d], [x + CELL - d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d]];   // dropped discoveries / pool cards
@@ -308,7 +315,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = DTYPE_COLOR[f.type]; cctx.fill();
       cctx.lineWidth = Math.max(2, CELL * 0.07); cctx.strokeStyle = DCOLOR[f.color]; cctx.stroke();   // colour-axis rim
       if (CELL >= 20) { cctx.font = `${CELL * 0.3}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[f.type], cx0, cy0 + 0.5); }
-    } else if (!t.revealed && t.richness > 0) {   // BACK-SIDE: an un-entered discovery — only the biome pool colour shows (a brighter tint of the tile)
+    } else if (!t.revealed && t.richness > 0 && !t.roads && !t.hotspot) {   // BACK-SIDE: an un-entered discovery — only where a find can actually appear (not roads/special locations)
       cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.24, 0, 7);
       cctx.fillStyle = BIOME_POOL[t.terrain] ?? GRAY_BIOME[t.terrain]; cctx.fill();
       cctx.lineWidth = 1.25; cctx.strokeStyle = 'rgba(0,0,0,0.5)'; cctx.stroke();
@@ -329,10 +336,23 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     });
   }
 
-  // 4) vehicles (top-right; driver-coloured when occupied)
-  for (const v of G.vehicles) {
-    const c = v.pos % G.cols, r = (v.pos / G.cols) | 0;
-    carGlyph(cctx, c * CELL, r * CELL, v.driver !== null ? PLAYER_COLOR[+v.driver % 4] : null, v.kind === 'motorboat' ? '🛥️' : '🚗');
+  // 4) vehicles (drawn UNDER the players, section 7). Boarded → tucked just below the driver's pawn; parked & co-located → side by side along the bottom edge
+  const vByPos = new Map<number, typeof G.vehicles>();
+  for (const v of G.vehicles) { const a = vByPos.get(v.pos) ?? []; a.push(v); vByPos.set(v.pos, a); }
+  for (const [pos, vs] of vByPos) {
+    const c = pos % G.cols, r = (pos / G.cols) | 0;
+    const parked = vs.filter(v => v.driver === null);
+    vs.forEach(v => {
+      const glyph = v.kind === 'motorboat' ? '🛥️' : '🚗';
+      if (v.driver !== null) {   // ride it just below the driver's pawn
+        const dg = PAWN_DIAG[+v.driver % 4];
+        const px = c * CELL + CELL / 2 + dg[0] * CELL * 0.24, py = r * CELL + CELL / 2 + dg[1] * CELL * 0.24 + CELL * 0.2;
+        carGlyph(cctx, px - CELL / 2, py - CELL * 0.82, PLAYER_COLOR[+v.driver % 4], glyph);
+      } else {
+        const k = parked.indexOf(v), ox = parked.length > 1 ? (k - (parked.length - 1) / 2) * CELL * 0.3 : 0;
+        carGlyph(cctx, c * CELL + ox, r * CELL, null, glyph);
+      }
+    });
   }
 
   // 5) legal-target rings (solid = walk, dashed = drive) + AP cost label (fractional for the car)
@@ -360,12 +380,11 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     cctx.strokeRect(c * CELL + 1.5, r * CELL + 1.5, CELL - 3, CELL - 3);
   }
 
-  // 7) players — parked off-centre on a per-player diagonal (midway corner↔centre), clear of the centre discovery
-  const DIAG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];   // P0 TL, P1 TR, P2 BL, P3 BR
+  // 7) players — off-centre on a per-player diagonal (midway corner↔centre), clear of the centre discovery; drawn ON TOP of a boarded vehicle
   for (const [tile, ids] of positions) {
     const c = tile % G.cols, r = (tile / G.cols) | 0;
     ids.forEach((id) => {
-      const dg = DIAG[+id % 4];
+      const dg = PAWN_DIAG[+id % 4];
       const cx = c * CELL + CELL / 2 + dg[0] * CELL * 0.24, cy = r * CELL + CELL / 2 + dg[1] * CELL * 0.24;
       cctx.beginPath(); cctx.arc(cx, cy, CELL * 0.15, 0, 7);   // smaller pawn → the biome discovery circle shows around it
       cctx.fillStyle = PLAYER_COLOR[+id % 4]; cctx.fill();
