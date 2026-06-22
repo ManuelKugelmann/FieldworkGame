@@ -42,6 +42,11 @@ const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/tur
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
 export const ROLE_BONUS = 3;   // a specialist's permanent catalogue bonus for their own discipline
 export const MONSOON_END = 4;   // field season ends (epilogue begins) after this many monsoon events
+// LAB tuning — fairest config measured over 700-match sweeps (win rates 23/24/25/28% by seat, 5-pt spread):
+//   frontier 'all' = merge the frontier pool into the lab pool at lab start (available to everyone), not just the last player.
+//   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
+//   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
+export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 export const catDC = (color: number) => CATALOGUE_DC + color;   // difficulty = colour tier: the number on a discovery (red 0 … violet 3) IS its catalogue DC (6–9)
@@ -118,7 +123,7 @@ const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' ||
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
   jungle:    { bot: 4, zoo: 4, arch: 2, geo: 1 },   // dense flora + fauna (botany & zoology rich)
-  rocky:     { geo: 3, arch: 3, zoo: 1, bot: 1 },   // geology + archaeology (geo trimmed so it's no longer over-abundant)
+  rocky:     { geo: 2, arch: 3, zoo: 1, bot: 1 },   // geology + archaeology (geo trimmed further — minerals are scarcer now, worth more on publish)
   ruins:     { arch: 8, geo: 2, bot: 1, zoo: 1 },   // a dig site — archaeology dominates the stack
   water:     { zoo: 4, bot: 2, geo: 1, arch: 1 },   // aquatic life — fish/fauna heavy, some flora
 };
@@ -165,7 +170,7 @@ function compTerrain(map: Tile[], pred: (t: Tile) => boolean) {       // plain 4
 
 function genOnce(seed: number) {
   const rand = prng(seed), g: Tile[] = new Array(N * N).fill(null as any);
-  const set = (i: number, t: Terrain, bridge?: Bridge) => { const max = RICH[t], richness = (max === 0 || rand() < 0.5) ? 0 : 1 + Math.floor(max * rand() ** 2); g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness, revealed: false, finds: [], equipment: [], cache: [] }; };  // 0 vs 1+ is 50:50; within 1..max skewed toward 1 (max rare)
+  const set = (i: number, t: Terrain, bridge?: Bridge) => { const max = RICH[t], richness = (max === 0 || (t !== 'ruins' && rand() < 0.5)) ? 0 : 1 + Math.floor(max * rand() ** 2); g[i] = { terrain: t, bridge, roads: 0, paths: 0, smallRivers: 0, blocked: 0, rivers: 0, richness, revealed: false, finds: [], equipment: [], cache: [] }; };  // 0 vs 1+ is 50:50 — except RUINS, which always bear a find (richness ≥ 1); within 1..max skewed toward 1 (max rare)
   const join = (a: number, b: number, k: EdgeKind) => { g[a][k] |= dirBit(a, b); g[b][k] |= dirBit(b, a); };   // lay one edge of link kind `k` (symmetric)
   const link = (a: number, b: number) => join(a, b, 'roads');         // road edge
   const linkP = (a: number, b: number) => join(a, b, 'paths');        // foot edge
@@ -280,7 +285,7 @@ function genOnce(seed: number) {
   for (let i = 0; i < N * N; i++) if (!g[i]) set(i, 'jungle');
   const carve = (terr: Terrain, p: number, sz: number) => { for (let k = 0; k < p; k++) { let i = Math.floor(rand() * N * N); for (let s = 0; s < sz; s++) { if (g[i].terrain === 'jungle' && g[i].roads === 0) set(i, terr); const ns = nbrs(i).filter(j => g[j].terrain === 'jungle' && g[j].roads === 0); if (!ns.length) break; i = ns[Math.floor(rand() * ns.length)]; } } };   // never carve over a road overlay (set() would wipe its edges)
   const scale = (N * N) / 100;   // patch counts scale with board area (10×10 … 15×15)
-  carve('rocky', Math.round(9 * scale), 4); carve('grassland', Math.round(9 * scale), 4);   // bigger rocky/grass share → more balanced biomes (jungle stays the remainder)
+  carve('rocky', Math.round(5 * scale), 3); carve('grassland', Math.round(9 * scale), 4);   // less rock (smaller, fewer patches) → more forest (jungle is the remainder); grass unchanged
   carve('ruins', Math.max(1, Math.round(scale)), 2);   // a few small arch-rich dig sites (topped up to RUINS_N below)
   // CLIFFS: 1–2 uncrossable edges on some land tiles (plain land↔land only — never roads/water/bridges, so the laid networks stay intact)
   const isLand = (i: number) => { const t = g[i].terrain; return t === 'jungle' || t === 'rocky' || t === 'grassland' || t === 'ruins'; };
@@ -440,6 +445,9 @@ function reveal(G: GState, t: number, random: any, cur: string, from: number) {
     if (isEvent(c)) events.push(c.event);                          // events fire on enter (below); never become finds
     else if (tile.finds.length < cap) tile.finds.push(c);         // specimen — kept up to the tile's find cap
   }
+  if (tile.terrain === 'ruins' && tile.finds.length < cap) {      // RUINS always bear a discovery — if the trials came up empty/event-only, force one real specimen
+    const di = pool.findIndex(c => !isEvent(c)); if (di >= 0) tile.finds.push(pool.splice(di, 1)[0] as Discovery);
+  }
   const kinds = new Set(events);                                  // collapse duplicates: at most ONE of each effect per tile
   if (kinds.has('rockslide')) fireEvent(G, t, 'rockslide', random, cur, from);      // bury finds + seal the whole tile + bump back
   if (kinds.has('animalAttack')) fireEvent(G, t, 'animalAttack', random, cur, from);      // lose at most 1 inventory item
@@ -541,7 +549,7 @@ const unstash: Move<GState> = ({ G, ctx }, i = 0) => {   // i = index into the c
 // A project is a list of PARTS; each part needs `count` discoveries pinned by discipline and/or colour. Owned fill first; ≤MAX_CITE shortfall cites others' published. Discoveries used are CONSUMED into the publisher's pool.
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
 // discipline rarity (≈ inverse of measured supply: arch most abundant 0 · geo/zoo mid 1 · bot rarest 2) — feeds the rarity-skewed payout
-const DISC_RARITY: Record<DType, number> = { arch: 0, geo: 1, zoo: 1, bot: 2 };
+const DISC_RARITY: Record<DType, number> = { arch: 0, geo: 2, zoo: 1, bot: 2 };   // minerals (geo) are scarce → premium payout, on par with botany
 const RARITY_K = 0.45;   // prestige premium per unit of component rarity (discipline rarity + colour difficulty)
 const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
@@ -821,23 +829,26 @@ export const Expedition: Game<GState> = {
     };
   },
   moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, stash, unstash },
+  // EXPERIMENTAL knob — lab-season frontier merge: 'last' (only last player), 'all' (at lab start, everyone), 'none'
   turn: {
     onBegin: ({ G, ctx, random }) => {
       const pos = (ctx.turn - 1) % ctx.numPlayers;   // play order within the round (0 = start player)
-      if (!G.epilogue) {
-        if (pos === 0 && ctx.turn > 1 && (G.monsoon >= MONSOON_END || !G.events.length)) {
-          G.epilogue = true; G.labLeft = ctx.numPlayers;   // field season ends on a ROUND BOUNDARY (equal field turns), then the lab season begins
-          G.log.push('🌧️ monsoon — indoor lab season');
-        } else {
-          const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer);   // field turn: draw 1 event
-        }
-      }
+      if (!G.epilogue) { const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer); }   // field turn: draw 1 event
       const p = G.players[ctx.currentPlayer];
       if (G.epilogue) {
-        // LAB SEASON, round-robin: each player in turn dumps their hand into the shared base pool and publishes ONE research; leftovers pass to the next. The frontier pool merges into the base pool just before the LAST player.
+        // LAB SEASON, round-robin: each player in turn (P0 first) dumps their hand into the shared base pool and publishes ONE research; leftovers pass to the next. The frontier pool merges into the base pool just before the LAST player.
         const lab = G.map[G.base].cache;
-        if (G.labLeft === 1) G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
-        if (p.samples.length) { G.log.push(`P${ctx.currentPlayer} dump ${p.samples.length} → lab pool`); lab.push(...p.samples); p.samples.length = 0; }
+        if (LAB_CFG.dump === 'upfront') {
+          if (G.labLeft === ctx.numPlayers) {   // FIRST lab turn (P0): pool EVERYTHING — all hands + frontier — so every player publishes from the same full base pool; P0 picks first
+            G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
+            for (const pl of Object.values(G.players)) { if (pl.samples.length) { lab.push(...pl.samples); pl.samples.length = 0; } }
+            G.log.push(`📚 lab pool assembled (${lab.length})`);
+          }
+        } else {
+          const mergeNow = LAB_CFG.frontier === 'all' ? G.labLeft === ctx.numPlayers : LAB_CFG.frontier === 'last' ? G.labLeft === 1 : false;
+          if (mergeNow) G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
+          if (p.samples.length) { G.log.push(`P${ctx.currentPlayer} dump ${p.samples.length} → lab pool`); lab.push(...p.samples); p.samples.length = 0; }
+        }
         p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
       } else {
         const round = Math.floor((ctx.turn - 1) / ctx.numPlayers);
@@ -847,10 +858,21 @@ export const Expedition: Game<GState> = {
     },
     order: {
       first: () => 0,
-      // wandering start player: each round begins with a different player (round 0 starts P0, round 1 P1, …) so the first-mover advantage rotates
-      next: ({ ctx }: any) => { const N = ctx.numPlayers, k = ctx.turn; return (Math.floor(k / N) + (k % N)) % N; },
+      // field season: wandering start player (each round begins with a different player) so the first-mover advantage rotates.
+      // lab season: a fixed, fair order — P0 always opens, P{N-1} always closes (driven by labLeft so the frontier-merge target is deterministic).
+      next: ({ G, ctx }: any) => {
+        if (G.epilogue) return (ctx.numPlayers - G.labLeft) % ctx.numPlayers;
+        const N = ctx.numPlayers, k = ctx.turn; return (Math.floor(k / N) + (k % N)) % N;
+      },
     },
-    onEnd: ({ G }) => { if (G.epilogue) G.labLeft -= 1; },   // each player gets exactly one lab turn
+    onEnd: ({ G, ctx }) => {
+      if (G.epilogue) { G.labLeft -= 1; return; }   // each player gets exactly one lab turn
+      // field season ends on a ROUND BOUNDARY (after the round's last seat) — equal field turns for everyone — then the lab opens at P0 next turn
+      const pos = (ctx.turn - 1) % ctx.numPlayers;
+      if (pos === ctx.numPlayers - 1 && ctx.turn > 1 && (G.monsoon >= MONSOON_END || !G.events.length)) {
+        G.epilogue = true; G.labLeft = ctx.numPlayers; G.log.push('🌧️ monsoon — indoor lab season');
+      }
+    },
   },
   endIf: ({ G }) => {
     if (!(G.epilogue && G.labLeft <= 0)) return;              // play through the indoor lab season, then score
