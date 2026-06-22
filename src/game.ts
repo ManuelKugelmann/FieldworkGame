@@ -832,7 +832,6 @@ export const Expedition: Game<GState> = {
   // EXPERIMENTAL knob — lab-season frontier merge: 'last' (only last player), 'all' (at lab start, everyone), 'none'
   turn: {
     onBegin: ({ G, ctx, random }) => {
-      const pos = (ctx.turn - 1) % ctx.numPlayers;   // play order within the round (0 = start player)
       if (!G.epilogue) { const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer); }   // field turn: draw 1 event
       const p = G.players[ctx.currentPlayer];
       if (G.epilogue) {
@@ -851,9 +850,7 @@ export const Expedition: Game<GState> = {
         }
         p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
       } else {
-        const round = Math.floor((ctx.turn - 1) / ctx.numPlayers);
-        // round 1 ONLY: ramp AP up by play order — the start player gets the fewest, the last player a full turn (dents the opening first-mover edge); thereafter flat START_AP
-        p.ap = round === 0 ? Math.max(1, START_AP - (ctx.numPlayers - 1 - pos)) : START_AP;
+        p.ap = START_AP;   // flat AP every turn; the wandering start player (not an AP handicap) is what rotates the first-mover edge
       }
     },
     order: {
