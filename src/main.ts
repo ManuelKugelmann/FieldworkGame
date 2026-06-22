@@ -100,7 +100,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
     const cells = pat.cells.map(c => {
-      const inner = c.swatch && c.icon ? `<span class="sw" style="background:${c.swatch}">${c.icon}</span>`
+      const inner = c.swatch && c.icon ? `<span class="sw ic" style="background:${c.swatch}">${c.icon}</span>`
         : c.swatch ? `<span class="sw" style="background:${c.swatch}"></span>`
         : (c.icon ?? '·');
       return `<span class="cell ${c.state}">${inner}</span>`;
