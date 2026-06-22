@@ -809,9 +809,10 @@ export const Expedition: Game<GState> = {
     const moor = rv >= 0 ? nbrs(rv).find(j => map[j] && map[j].terrain === 'water') : undefined;   // moor a shared motorboat on the large river beside the village
     const vehicles: Vehicle[] = Array.from({ length: ctx.numPlayers }, () => ({ pos: start, driver: null, trunk: [], kind: 'car' as const }));   // one shared car per player, at base
     if (moor !== undefined) vehicles.push({ pos: moor, driver: null, trunk: [], kind: 'motorboat' });
+    const roleBag = [...ROLES]; { const rr = prng((seed ^ 0x2545f491) >>> 0); for (let i = roleBag.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [roleBag[i], roleBag[j]] = [roleBag[j], roleBag[i]]; } }   // specialist roles shuffled per match (not fixed by seat)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
-        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false, role: ROLES[i % ROLES.length] }])),
+        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false, role: roleBag[i % roleBag.length] }])),
       map, cols: N, rows: N, base: start,
       vehicles,
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand), water: buildPool('water', colorRand) },
@@ -839,7 +840,9 @@ export const Expedition: Game<GState> = {
         if (p.samples.length) { G.log.push(`P${ctx.currentPlayer} dump ${p.samples.length} → lab pool`); lab.push(...p.samples); p.samples.length = 0; }
         p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
       } else {
-        p.ap = START_AP;   // flat field AP; fairness comes from the wandering start player (turn.order below)
+        const round = Math.floor((ctx.turn - 1) / ctx.numPlayers);
+        // round 1 ONLY: ramp AP up by play order — the start player gets the fewest, the last player a full turn (dents the opening first-mover edge); thereafter flat START_AP
+        p.ap = round === 0 ? Math.max(1, START_AP - (ctx.numPlayers - 1 - pos)) : START_AP;
       }
     },
     order: {
