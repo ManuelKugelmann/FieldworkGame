@@ -117,7 +117,7 @@ const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' ||
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   grassland: { geo: 1, arch: 1, zoo: 1, bot: 1 },   // low everything
   jungle:    { bot: 4, zoo: 4, arch: 2, geo: 1 },   // dense flora + fauna (botany & zoology rich)
-  rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
+  rocky:     { geo: 3, arch: 3, zoo: 1, bot: 1 },   // geology + archaeology (geo trimmed so it's no longer over-abundant)
   ruins:     { arch: 8, geo: 2, bot: 1, zoo: 1 },   // a dig site — archaeology dominates the stack
   water:     { zoo: 4, bot: 2, geo: 1, arch: 1 },   // aquatic life — fish/fauna heavy, some flora
 };
@@ -539,8 +539,8 @@ const unstash: Move<GState> = ({ G, ctx }, i = 0) => {   // i = index into the c
 // Poker grammar (discipline = rank, colour = suit) made CONCRETE: each project pins specific values, so two players can race the same question.
 // A project is a list of PARTS; each part needs `count` discoveries pinned by discipline and/or colour. Owned fill first; ≤MAX_CITE shortfall cites others' published. Discoveries used are CONSUMED into the publisher's pool.
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
-// discipline rarity (≈ inverse of measured supply: geo most abundant 0 · zoo/arch mid 1 · bot rarest 2) — feeds the rarity-skewed payout
-const DISC_RARITY: Record<DType, number> = { geo: 0, zoo: 1, bot: 2, arch: 1 };
+// discipline rarity (≈ inverse of measured supply: arch most abundant 0 · geo/zoo mid 1 · bot rarest 2) — feeds the rarity-skewed payout
+const DISC_RARITY: Record<DType, number> = { arch: 0, geo: 1, zoo: 1, bot: 2 };
 const RARITY_K = 0.45;   // prestige premium per unit of component rarity (discipline rarity + colour difficulty)
 const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
