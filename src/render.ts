@@ -41,7 +41,7 @@ export const MIN_CELL = 16;        // floor so the board stays usable on tiny vi
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#5fdf6f'];   // gold · cyan · orange · green (no purple)
 const PAWN_DIAG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];   // per-player off-centre diagonal: P0 TL · P1 TR · P2 BL · P3 BR
 const hash01 = (i: number, k: number) => { let h = (Math.imul(i + 1, 2654435761) ^ Math.imul(k + 1, 40503)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return ((h >>> 8) & 0xffff) / 0xffff; };   // deterministic per-tile jitter
-export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff4444', bot: '#57e466', arch: '#bb9cff' };   // discipline colours: geo gold · zoo red · bot green · arch purple
+export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#4ab0ff', zoo: '#ff4444', bot: '#57e466', arch: '#ffd24a' };   // discipline colours (= player colours): geo blue · zoo red · bot green · arch yellow
 export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: '💎', zoo: '🐾', bot: '🌿', arch: '🏺' };   // type icon — used everywhere instead of the geo/zoo/bot/arch words
 const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo' || s === 'bot' || s === 'arch';
 export const prettyFind = (d: Discovery) => `${DTYPE_SYMBOL[d.type]}${d.color}`;                     // e.g. 💎3
@@ -50,10 +50,9 @@ export const prettyLog = (line: string) => line.replace(/\b(geo|zoo|bot|arch)(\d
 const COL_SQUARE = ['🟩', '🟦', '🟨'];   // the 3 discovery colours as squares (green blue yellow)
 // compact iconic project label: e.g. "3 💎", "2 💎 + 2 🐾", "5 🟥" (no "of a kind" prose)
 export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ? DTYPE_SYMBOL[p.type] : ''}${p.color !== undefined ? COL_SQUARE[p.color] : ''}`).join(' + ');
-// specialist badge: discipline icon + name, tinted by the player's preferred-biome colour (cosmetic)
-const ROLE_COLOR: Record<Role, number> = { botanist: 0, zoologist: 0, geologist: 1, archaeologist: 2 };   // green / green / blue / yellow
-export const roleBadge = (role: Role) => `<span title="+3 catalogue on ${ROLE_DISC[role]}" style="color:${DCOLOR[ROLE_COLOR[role]]};font-weight:600">${DTYPE_SYMBOL[ROLE_DISC[role]]} ${role[0].toUpperCase()}${role.slice(1)}</span>`;
-// a player's colour follows their SPECIALIZATION (discipline), not their seat: botanist green · zoologist red · geologist gold · archaeologist purple
+// specialist badge: discipline icon + name, tinted by the discipline (= player) colour so the badge matches the player
+export const roleBadge = (role: Role) => `<span title="+3 catalogue on ${ROLE_DISC[role]}" style="color:${DTYPE_COLOR[ROLE_DISC[role]]};font-weight:600">${DTYPE_SYMBOL[ROLE_DISC[role]]} ${role[0].toUpperCase()}${role.slice(1)}</span>`;
+// a player's colour follows their SPECIALIZATION (discipline), not their seat: geologist blue · zoologist red · botanist green · archaeologist yellow
 export const playerColor = (role: Role) => DTYPE_COLOR[ROLE_DISC[role]];
 // the one global event in effect this round, shown near the turn info
 export const EVENT_LABEL: Record<string, string> = { tailwind: '🌬️ tailwind +1AP', cache: '💰 cache +2$', grant: '🎓 grant +3$', calm: '☀️ calm', rockslide: '⛏ rockslide', washout: '🌊 washout', monsoon: '⛈ monsoon' };
