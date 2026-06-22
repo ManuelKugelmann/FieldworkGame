@@ -38,6 +38,8 @@
       .manual h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .35rem; }
       .manual ul { margin: 0; padding-left: .95rem; }
       .manual li { margin: .12rem 0; }
+      .manual li.leg { list-style: none; margin-left: -.95rem; opacity: .75; }   /* reference legend, set apart from the rules */
+      .manual li.leg:first-of-type { margin-top: .5rem; padding-top: .4rem; border-top: 1px solid #2a3a2a; }
       .boardwrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; }
       .inspectwrap { width: 100%; max-width: 30rem; margin-top: .45rem; }
       #board { background: #0b0f0a; border: 1px solid #1d3d22; border-radius: 6px; touch-action: none; display: block; margin: 0 auto; }
@@ -81,8 +83,8 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-C8WqLxVo.js"></script>
-    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-LxjBvXSa.js">
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-W_JpqY0p.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-C012k7jo.js">
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
@@ -100,17 +102,21 @@
         <div class="manual">
           <h2>Manual</h2>
           <ul>
-            <li>🚶 move: 1 AP path/road · 2 AP off-path · 4 AP/turn</li>
-            <li>🛶 canoe 1 AP (water+brooks) · 🚗 car 3 road/AP · 🛥 boat 4 river/AP</li>
-            <li>finds flip face-up when you enter a tile (free)</li>
-            <li>catalogue a find: 1 AP — 🎲 2d6 + gear ≥ difficulty (take it on a success)</li>
-            <li>difficulty by colour: 🟩 6 · 🟦 7 · 🟨 8</li>
-            <li>📜 publish at a base: AP cost rises 1→4 (from its shared pool)</li>
-            <li>specialists: +3 🎲 catalogue on their own discipline</li>
-            <li>💎 geo · 🐾 zoo · 🌿 bot · 🏺 arch</li>
-            <li>🏢 research base · ⛺ frontier base (the 2 shared pools)</li>
-            <li>🏘️ village · 🏠 river village (markets)</li>
-            <li>gear 🔬 +1/+2/+3 (all disciplines, white) · 🔬+type field kit (1 discipline, coloured)</li>
+            <li>🔄 round-robin start player — a different player begins each round</li>
+            <li>🎴 the start player flips the round's event (global — affects everyone)</li>
+            <li>⚡ 4 AP per turn</li>
+            <li>🚶 foot: 2 AP anywhere · 1 AP on a trail or road</li>
+            <li>🛶 canoe: 1 AP per brook or river tile</li>
+            <li>🚗 car: 3 road tiles / AP</li>
+            <li>🛥 boat: 2 river tiles / AP</li>
+            <li>🔎 discoveries flip on entering a tile — specimens & hazards</li>
+            <li>🎲 roll 2d6 + bonuses ≥ difficulty to catalogue a specimen</li>
+            <li>🏢 visiting a base puts all your carried specimens into its pool</li>
+            <li>📜 publish research at a base for 1–4 AP (cost rises with publication count)</li>
+            <li>🧩 research requires a combo</li>
+            <li class="leg">difficulty by colour: 🟩 6 · 🟦 7 · 🟨 8 · specialist: +3 on own discipline</li>
+            <li class="leg">💎 geo · 🐾 zoo · 🌿 bot · 🏺 arch · 🏢 base · ⛺ frontier · 🏘️ village · 🏠 river village</li>
+            <li class="leg">gear 🔬 +1/+2/+3 (all disciplines, white) · 🔬+type field kit (1 discipline, coloured)</li>
           </ul>
         </div>
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
