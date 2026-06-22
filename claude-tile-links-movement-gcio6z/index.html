@@ -46,6 +46,7 @@
       .pcard.cur { border-color: #c9b14a; background: #161306; }
       .pcard .who { font-weight: 600; }
       .ap { background: #0b0f0a; color: #fff; font-weight: 700; padding: 0 .35rem; border-radius: 3px; border: 1px solid #c9b14a; }   /* AP — white, boxed (matches the move-board labels) */
+      .pcard .inv { margin-top: .12rem; }   /* specimens on one line, gear on the next */
       .chip { display: inline-block; padding: 0 .35rem; border-radius: 3px; background: #16301a; margin: 0 .15rem; font-size: .72rem; }
       .chip.gear { background: #2a2410; border: 1px solid #5a4d1f; }
       .slot.empty { display: inline-block; width: 1.1rem; height: .9rem; margin: 0 .1rem; border: 1px dashed #2f5a34; border-radius: 3px; vertical-align: middle; opacity: .5; }
@@ -54,7 +55,7 @@
       #log { max-height: 32vh; overflow: auto; font-size: .72rem; color: #9fc69a; }
       .legend { color: #6f8f70; font-size: .72rem; margin-top: .6rem; white-space: pre; }
       #status { font-size: .82rem; color: #cfe9c8; margin-bottom: .6rem; min-height: 1.2rem; }
-      .pat { display: flex; align-items: center; gap: .35rem; padding: .18rem .5rem; border: 1px solid #c8c8cc; border-radius: 5px; font-size: .74rem; color: #1c1c20; background: #e9e9ec; }   /* whiteish card */
+      .pat { display: flex; align-items: center; gap: .35rem; padding: .2rem .5rem; border: 1px solid #34343a; border-radius: 5px; font-size: .74rem; color: #d8d8dc; background: #1c1c20; }   /* dark card */
       .pat.ready { border-color: #3a7a3f; background: #14301a; color: #bdebbd; }
       .pat .nm { font-weight: 600; text-transform: capitalize; }
       .pat .rw { opacity: .7; margin-left: auto; }   /* reward pushed to the right; symbols stay left */
@@ -62,8 +63,8 @@
       .pat .cell.have { opacity: 1; }
       .pat .cell.cite { opacity: .55; }                 /* fillable by citing another player */
       .pat .cell.need { opacity: .5; filter: grayscale(.5); }   /* still missing — dimmed but readable */
-      .pat .sw { display: inline-flex; align-items: center; justify-content: center; min-width: .8em; height: .8em; padding: 0 .05em; border-radius: 2px; vertical-align: middle; font-size: .6em; }   /* colour-axis slot (may hold a discipline icon for both-axes goals) */
-      .pat .sw.ic { font-size: inherit; min-width: 1em; height: auto; padding: .02em .12em; border-radius: 3px; }   /* colour+symbol: icon at full size (same as uncoloured), colour as background */
+      .pat .tok { display: inline-flex; align-items: center; justify-content: center; min-width: 1em; height: 1.15em; padding: 0 .14em; border-radius: 3px; vertical-align: middle; font-size: .95em; }   /* a project slot token (full size) */
+      .pat .tok.lit { background: #d8d8dc; }   /* symbol-only token on a light pill so the icon reads on the dark card */
       .pat .thr { margin-left: .15rem; }
       .pat .thr.i { filter: drop-shadow(0 0 2px #e0563a); }   /* imminent snipe */
       .pat .thr.h { opacity: .65; }                            /* hidden colour race */
@@ -75,8 +76,8 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-Bc78Okvw.js"></script>
-    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-DrTWBCJY.js">
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-2rYd_7ar.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-B6zAFAtm.js">
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
