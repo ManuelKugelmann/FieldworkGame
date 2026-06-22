@@ -17,12 +17,11 @@ const $ = (id: string) => document.getElementById(id)!;
 const canvas = $('board') as HTMLCanvasElement;
 $('built').textContent = `built ${__BUILD_TIME__}`;
 
-const client = Client<GState>({ game: Expedition, numPlayers: 2 });
+const client = Client<GState>({ game: Expedition, numPlayers: 4 });
 client.start();
 
 const human = new Set<string>(['0']);   // seats a person controls; the rest are bot-played
-($('human0') as HTMLInputElement).addEventListener('change', e => syncSeat('0', e));
-($('human1') as HTMLInputElement).addEventListener('change', e => syncSeat('1', e));
+for (let s = 0; s < 4; s++) ($(`human${s}`) as HTMLInputElement | null)?.addEventListener('change', e => syncSeat(String(s), e));
 function syncSeat(id: string, e: Event) {
   if ((e.target as HTMLInputElement).checked) human.add(id); else human.delete(id);
   scheduleBot(); draw();
@@ -124,8 +123,8 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
     const pubBox = isCur ? ` 📜<span class="ap">−${publishCost(p.pubs)} AP</span>` : '';
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
-    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">Player ${+id + 1}</span>${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}` +
-      ` · 🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b>` +
+    return `<div class="${c}"><div class="who" style="color:${PLAYER_COLOR[+id % 4]}">Player ${+id + 1}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
+      `<div class="stat">🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b></div>` +
       `<div class="inv">${specimens || dot}</div><div class="inv">${gearChips(p.gear) || dot}${empties}</div></div>`;
   }).join('');
 

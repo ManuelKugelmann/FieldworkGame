@@ -217,21 +217,30 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   });
 }
 
-function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, color: string, width: number, dash: number[]) {
-  const ca = a % G.cols, ra = (a / G.cols) | 0, cb = b % G.cols, rb = (b / G.cols) | 0;
-  cctx.strokeStyle = color; cctx.lineWidth = width; cctx.setLineDash(dash);
-  cctx.beginPath();
-  cctx.moveTo(ca * CELL + CELL / 2, ra * CELL + CELL / 2);
-  cctx.lineTo(cb * CELL + CELL / 2, rb * CELL + CELL / 2);
-  cctx.stroke(); cctx.setLineDash([]);
+// draw a link network as CURVED paths: per tile, connect its linked edge-midpoints through the centre
+// (2 edges → a quadratic that's straight for opposite edges, a rounded bend for adjacent; 1 or 3–4 → radial stubs)
+function linkLayer(cctx: CanvasRenderingContext2D, G: GState, mask: (t: Tile) => number, color: string, width: number, dash: number[]) {
+  cctx.strokeStyle = color; cctx.lineWidth = width; cctx.setLineDash(dash); cctx.lineCap = 'round'; cctx.lineJoin = 'round';
+  for (let i = 0; i < G.map.length; i++) {
+    const m = mask(G.map[i]); if (!m) continue;
+    const c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL, cx = x + CELL / 2, cy = y + CELL / 2;
+    const pts: [number, number][] = [];
+    if (m & 1) pts.push([cx, y]); if (m & 2) pts.push([x + CELL, cy]); if (m & 4) pts.push([cx, y + CELL]); if (m & 8) pts.push([x, cy]);
+    if (pts.length === 2) { cctx.beginPath(); cctx.moveTo(pts[0][0], pts[0][1]); cctx.quadraticCurveTo(cx, cy, pts[1][0], pts[1][1]); cctx.stroke(); }
+    else for (const p of pts) { cctx.beginPath(); cctx.moveTo(cx, cy); cctx.lineTo(p[0], p[1]); cctx.stroke(); }
+  }
+  cctx.setLineDash([]);
 }
 
 // bold black bar along the FULL shared border between a & b = impassable cliff edge
 // cliff: a dark band covering ~1/3 of tile `a` on the affected side (toward `b` = a+1 East or a+cols South) — no border line
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
-  const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34;
-  cctx.fillStyle = CLIFF_FILL;
-  if (b === a + 1) cctx.fillRect(x + CELL - third, y, third, CELL); else cctx.fillRect(x, y + CELL - third, CELL, third);
+  const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34, east = b === a + 1;
+  const bx = east ? x + CELL - third : x, by = east ? y : y + CELL - third, bw = east ? third : CELL, bh = east ? CELL : third;
+  cctx.fillStyle = CLIFF_FILL; cctx.fillRect(bx, by, bw, bh);
+  cctx.fillStyle = 'rgba(168,168,176,0.6)';   // rock-grey scree dots on the cliff side
+  const seed = a * 13 + (east ? 3 : 7);
+  for (let k = 0; k < 6; k++) { cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.7, CELL * 0.026), 0, 7); cctx.fill(); }
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
@@ -266,20 +275,31 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     cctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
   }
 
-  // 2) movement graph: solid roads, dashed footpaths, dashed-blue brooks (boat); red bars = impassable cliffs (E + S edges, once)
+  // 2) movement graph as CURVED links (bends round off): river channel under roads, then footpaths + brooks; cliffs as dark in-tile bands
+  linkLayer(cctx, G, t => t.rivers, RIVER_LINE, 3, []);
+  linkLayer(cctx, G, t => t.roads, '#9a8757', 3, []);
+  linkLayer(cctx, G, t => t.paths, '#84a684', 1.5, [3, 3]);
+  linkLayer(cctx, G, t => t.smallRivers, BROOK_LINE, 2, [2, 2]);
+  cctx.setLineDash([]);
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0;
-    if (c < G.cols - 1) {
-      if (t.rivers & 2) edge(cctx, i, i + 1, G, RIVER_LINE, 3, []);   // river channel (under road/path lines)
-      if (t.roads & 2) edge(cctx, i, i + 1, G, '#9a8757', 3, []); else if (t.paths & 2) edge(cctx, i, i + 1, G, '#84a684', 1.5, [3, 3]);
-      if (t.smallRivers & 2) edge(cctx, i, i + 1, G, BROOK_LINE, 2, [2, 2]);
-      if (t.blocked & 2) borderBar(cctx, i, i + 1, G);
-    }
-    if (r < G.rows - 1) {
-      if (t.rivers & 4) edge(cctx, i, i + G.cols, G, RIVER_LINE, 3, []);
-      if (t.roads & 4) edge(cctx, i, i + G.cols, G, '#9a8757', 3, []); else if (t.paths & 4) edge(cctx, i, i + G.cols, G, '#84a684', 1.5, [3, 3]);
-      if (t.smallRivers & 4) edge(cctx, i, i + G.cols, G, BROOK_LINE, 2, [2, 2]);
-      if (t.blocked & 4) borderBar(cctx, i, i + G.cols, G);
+    if (c < G.cols - 1 && (t.blocked & 2)) borderBar(cctx, i, i + 1, G);
+    if (r < G.rows - 1 && (t.blocked & 4)) borderBar(cctx, i, i + G.cols, G);
+  }
+  // grass/forest-green dots on the river BANKS only — water-tile edges that face land, never the flow (river-link) direction
+  for (let i = 0; i < G.map.length; i++) {
+    const t = G.map[i]; if (t.terrain !== 'water') continue;
+    const c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL, cx = x + CELL / 2, cy = y + CELL / 2;
+    const land = (j: number) => G.map[j] && G.map[j].terrain !== 'water' && G.map[j].terrain !== 'void';
+    const banks: [number, number][] = [];
+    if (!(t.rivers & 1) && r > 0 && land(i - G.cols)) banks.push([cx, y + CELL * 0.16]);
+    if (!(t.rivers & 2) && c < G.cols - 1 && land(i + 1)) banks.push([x + CELL * 0.84, cy]);
+    if (!(t.rivers & 4) && r < G.rows - 1 && land(i + G.cols)) banks.push([cx, y + CELL * 0.84]);
+    if (!(t.rivers & 8) && c > 0 && land(i - 1)) banks.push([x + CELL * 0.16, cy]);
+    let s = 0;
+    for (const [bx, by] of banks) for (let k = 0; k < 3; k++, s++) {
+      cctx.fillStyle = s % 2 ? '#3a7a3a' : '#9ec24e';   // forest / grass green mix
+      cctx.beginPath(); cctx.arc(bx + (hash01(i, s * 2) - 0.5) * CELL * 0.42, by + (hash01(i, s * 2 + 1) - 0.5) * CELL * 0.42, Math.max(0.9, CELL * 0.03), 0, 7); cctx.fill();
     }
   }
 
@@ -296,7 +316,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     const bi = BIOME_ICON[t.terrain];   // 3 biome markers scattered (deterministically jittered) across the tile as texture
     if (bi && CELL >= 16) {
       const water = t.terrain === 'water';
-      cctx.textAlign = 'center'; cctx.textBaseline = 'middle'; cctx.globalAlpha = t.terrain === 'rocky' ? 0.5 : 0.8;   // rocks dimmer
+      cctx.textAlign = 'center'; cctx.textBaseline = 'middle'; cctx.globalAlpha = t.terrain === 'rocky' ? 0.34 : 0.8;   // rocks much more transparent
       cctx.font = water ? `bold ${CELL * 0.26}px ui-monospace, monospace` : `${CELL * 0.2}px ${EMOJI_FONT}`;
       if (water) cctx.fillStyle = '#7fc4e8';
       for (let k = 0; k < 3; k++) cctx.fillText(water ? '≈' : bi, x + CELL * (0.22 + hash01(i, k * 2) * 0.56), y + CELL * (0.22 + hash01(i, k * 2 + 1) * 0.56));
