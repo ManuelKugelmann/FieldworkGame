@@ -35,7 +35,7 @@ export interface GState {
 }
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
-const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
+const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 2, AP_RAMP = 3, AP_MAX = 6,  // AP ramps: START_AP early, +1 every AP_RAMP rounds, capped at AP_MAX (deliberate start → frantic finish)
   COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8, TRUNK_SLOTS = 3, MOTORBOAT_STEPS = 4;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat covers per AP (faster than the portable canoe's BOAT_STEPS)  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // TRUNK_SLOTS = items a car can carry in its trunk  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
@@ -831,7 +831,8 @@ export const Expedition: Game<GState> = {
           G.log.push('🌧️ monsoon — indoor lab season');
         }
       }
-      G.players[ctx.currentPlayer].ap = START_AP;        // refill (field AP, or lab-research AP)
+      const round = Math.floor((ctx.turn - 1) / ctx.numPlayers);   // AP ramps up as the season goes on (slow, deliberate start → frantic finish)
+      G.players[ctx.currentPlayer].ap = Math.min(AP_MAX, START_AP + Math.floor(round / AP_RAMP));
     },
     onEnd: ({ G }) => { if (G.epilogue) G.labLeft -= 1; },   // each player gets exactly one lab turn
   },
