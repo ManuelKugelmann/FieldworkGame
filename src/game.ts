@@ -104,8 +104,8 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
 const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // the TWO research sites: base lab + frontier (remote) research site. Each holds a SHARED, face-up open pool (tile.cache) — Texas Hold'em community cards.
 // the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
-// the pool you publish from: in the LAB season your OWN carried hand (no shared free-for-all); in the field the shared open pool at the research site you're on
-const pubPool = (G: GState, p: PlayerS): Discovery[] | null => G.epilogue ? p.samples : (isResearch(G.map[p.pos]) ? G.map[p.pos].cache : null);
+// the pool you publish from: in the LAB season the shared base pool (you dumped your hand into it on entry, and publish ONE hand from it); in the field the open pool at the research site you're on
+const pubPool = (G: GState, p: PlayerS): Discovery[] | null => G.epilogue ? G.map[G.base].cache : (isResearch(G.map[p.pos]) ? G.map[p.pos].cache : null);
 // entering a research site force-stashes your whole hand into that site's shared pool — open for ANY player's research, consumed when used
 function landAt(G: GState, cur: string) {
   const p = G.players[cur], t = G.map[p.pos];
@@ -825,14 +825,22 @@ export const Expedition: Game<GState> = {
       const pos = (ctx.turn - 1) % ctx.numPlayers;   // play order within the round (0 = start player)
       if (!G.epilogue) {
         if (pos === 0 && ctx.turn > 1 && (G.monsoon >= MONSOON_END || !G.events.length)) {
-          // the field season ends on a ROUND BOUNDARY (so every player got the same number of field turns), then the lab season begins
-          G.epilogue = true; G.labLeft = ctx.numPlayers;   // lab season: each player publishes from their OWN carried hand (no consolidation → no first-in-lab scoop)
-          G.log.push('🌧️ monsoon — indoor lab season (write up your own hand)');
+          G.epilogue = true; G.labLeft = ctx.numPlayers;   // field season ends on a ROUND BOUNDARY (equal field turns), then the lab season begins
+          G.log.push('🌧️ monsoon — indoor lab season');
         } else {
           const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer);   // field turn: draw 1 event
         }
       }
-      G.players[ctx.currentPlayer].ap = START_AP;   // flat AP; fairness comes from the wandering start player (turn.order below)
+      const p = G.players[ctx.currentPlayer];
+      if (G.epilogue) {
+        // LAB SEASON, round-robin: each player in turn dumps their hand into the shared base pool and publishes ONE research; leftovers pass to the next. The frontier pool merges into the base pool just before the LAST player.
+        const lab = G.map[G.base].cache;
+        if (G.labLeft === 1) G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
+        if (p.samples.length) { G.log.push(`P${ctx.currentPlayer} dump ${p.samples.length} → lab pool`); lab.push(...p.samples); p.samples.length = 0; }
+        p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
+      } else {
+        p.ap = START_AP;   // flat field AP; fairness comes from the wandering start player (turn.order below)
+      }
     },
     order: {
       first: () => 0,
