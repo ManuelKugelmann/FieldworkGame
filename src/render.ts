@@ -2,7 +2,7 @@
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
 import type { GState, Tile, Discovery, Pattern, GearItem, PlayerS, Vehicle } from './game';
-import { targetAP, evalGoal, GEAR_PRICE, catDC } from './game';
+import { targetAP, evalGoal, GEAR_PRICE, catDC, BIOME_COLOR } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -57,8 +57,6 @@ function grayishBiome(hex: string): string {
 const GRAY_BIOME = Object.fromEntries(
   (Object.keys(TERRAIN_FILL) as Tile['terrain'][]).map(t => [t, grayishBiome(TERRAIN_FILL[t])]),
 ) as Record<Tile['terrain'], string>;
-// discovery BACK-SIDE colour, distinct per biome pool — an un-entered find shows only this (you know the pool, not the card)
-const BIOME_BACK: Partial<Record<Tile['terrain'], string>> = { grassland: '#c9d44a', jungle: '#3aa85a', rocky: '#d0904a', ruins: '#b07ad0' };
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
@@ -302,9 +300,9 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = DTYPE_COLOR[f.type]; cctx.fill();
       cctx.lineWidth = Math.max(2, CELL * 0.07); cctx.strokeStyle = DCOLOR[f.color]; cctx.stroke();   // colour-axis rim
       if (CELL >= 20) { cctx.font = `${CELL * 0.3}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[f.type], cx0, cy0 + 0.5); }
-    } else if (!t.revealed && t.richness > 0) {   // BACK-SIDE: an un-entered discovery — only the biome-pool colour shows (different pools → different colours)
+    } else if (!t.revealed && t.richness > 0) {   // BACK-SIDE: an un-entered discovery — only the biome pool's signature colour shows (BIOME_COLOR)
       cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.24, 0, 7);
-      cctx.fillStyle = BIOME_BACK[t.terrain] ?? GRAY_BIOME[t.terrain]; cctx.fill();
+      cctx.fillStyle = DCOLOR[BIOME_COLOR[t.terrain] ?? 0]; cctx.fill();
       cctx.lineWidth = 1.25; cctx.strokeStyle = 'rgba(0,0,0,0.5)'; cctx.stroke();
     }
     for (const dc of t.cache) {   // DROPPED discoveries: face-up, free to grab — drawn with a white ring to read as "left here"
