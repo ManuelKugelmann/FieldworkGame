@@ -35,7 +35,7 @@ export interface GState {
 }
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
-const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 2, AP_RAMP = 3, AP_MAX = 6,  // AP ramps: START_AP early, +1 every AP_RAMP rounds, capped at AP_MAX (deliberate start → frantic finish)
+const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/turn; in round 1 only it ramps UP by play order (start player least) to offset first-mover advantage
   COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8, TRUNK_SLOTS = 3, MOTORBOAT_STEPS = 4;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat covers per AP (faster than the portable canoe's BOAT_STEPS)  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // TRUNK_SLOTS = items a car can carry in its trunk  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
@@ -104,7 +104,8 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
 const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // the TWO research sites: base lab + frontier (remote) research site. Each holds a SHARED, face-up open pool (tile.cache) — Texas Hold'em community cards.
 // the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
-const researchPool = (G: GState, pos: number): Discovery[] | null => G.epilogue ? G.map[G.base].cache : (isResearch(G.map[pos]) ? G.map[pos].cache : null);
+// the pool you publish from: in the LAB season your OWN carried hand (no shared free-for-all); in the field the shared open pool at the research site you're on
+const pubPool = (G: GState, p: PlayerS): Discovery[] | null => G.epilogue ? p.samples : (isResearch(G.map[p.pos]) ? G.map[p.pos].cache : null);
 // entering a research site force-stashes your whole hand into that site's shared pool — open for ANY player's research, consumed when used
 function landAt(G: GState, cur: string) {
   const p = G.players[cur], t = G.map[p.pos];
@@ -607,7 +608,7 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
 };
 
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED open pool at this research site (or the lab pool in the epilogue)
-  const p = G.players[ctx.currentPlayer], apCost = publishCost(p.pubs), pool = researchPool(G, p.pos);
+  const p = G.players[ctx.currentPlayer], apCost = publishCost(p.pubs), pool = pubPool(G, p);
   if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier) — cost rises with publish count
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
   const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the open pool — anyone's stashed cards are fair game
@@ -665,7 +666,7 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
 export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
   // publish from the shared open pool at a research site — claim the most valuable open question the pool can complete (your hand was force-stashed here on arrival)
-  const pool = researchPool(G, p.pos);
+  const pool = pubPool(G, p);
   if (pool && p.ap >= publishCost(p.pubs)) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, pool, [])) return { move: 'publish', args: [pat.id] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // invest spare money in gear: best affordable generic kit
@@ -758,7 +759,7 @@ export const enumerate = (G: GState, ctx: any) => {
     }
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
-  const pool = researchPool(G, p.pos);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
+  const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
   if (pool && p.ap >= publishCost(p.pubs)) G.goals.forEach(pat => { if (assemble(G, pat.id, pool, [])) out.push({ move: 'publish', args: [pat.id] }); });
   out.push({ event: 'endTurn' });
   return out;
@@ -821,18 +822,22 @@ export const Expedition: Game<GState> = {
   moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, stash, unstash },
   turn: {
     onBegin: ({ G, ctx, random }) => {
+      const pos = (ctx.turn - 1) % ctx.numPlayers;   // play order within the round (0 = start player)
       if (!G.epilogue) {
-        const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer);   // field season: 1 event/turn
-        if (G.monsoon >= MONSOON_END || !G.events.length) {
-          G.epilogue = true; G.labLeft = ctx.numPlayers;
-          const lab = G.map[G.base].cache;   // lab season: every hand + the frontier pool all consolidate into the base lab pool
-          for (const id in G.players) { const pl = G.players[id]; if (pl.samples.length) { lab.push(...pl.samples); pl.samples.length = 0; } }
-          G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
-          G.log.push('🌧️ monsoon — indoor lab season');
+        if (pos === 0 && ctx.turn > 1 && (G.monsoon >= MONSOON_END || !G.events.length)) {
+          // the field season ends on a ROUND BOUNDARY (so every player got the same number of field turns), then the lab season begins
+          G.epilogue = true; G.labLeft = ctx.numPlayers;   // lab season: each player publishes from their OWN carried hand (no consolidation → no first-in-lab scoop)
+          G.log.push('🌧️ monsoon — indoor lab season (write up your own hand)');
+        } else {
+          const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer);   // field turn: draw 1 event
         }
       }
-      const round = Math.floor((ctx.turn - 1) / ctx.numPlayers);   // AP ramps up as the season goes on (slow, deliberate start → frantic finish)
-      G.players[ctx.currentPlayer].ap = Math.min(AP_MAX, START_AP + Math.floor(round / AP_RAMP));
+      G.players[ctx.currentPlayer].ap = START_AP;   // flat AP; fairness comes from the wandering start player (turn.order below)
+    },
+    order: {
+      first: () => 0,
+      // wandering start player: each round begins with a different player (round 0 starts P0, round 1 P1, …) so the first-mover advantage rotates
+      next: ({ ctx }: any) => { const N = ctx.numPlayers, k = ctx.turn; return (Math.floor(k / N) + (k % N)) % N; },
     },
     onEnd: ({ G }) => { if (G.epilogue) G.labLeft -= 1; },   // each player gets exactly one lab turn
   },
