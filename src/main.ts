@@ -95,7 +95,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   const seat = human.has(ctx.currentPlayer) ? 'you' : 'bot…';
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
-    : `${phase} · P${ctx.currentPlayer} (${seat}) · ${cur.ap}AP · pub ${publishCost(cur.pubs)}AP · 🌧${G.monsoon}/4`;
+    : `${phase} · ${seat} · 🌧${G.monsoon}/4`;
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
     const cells = pat.cells.map(c => {
@@ -121,8 +121,9 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const driving = drove ? (drove.kind === 'motorboat' ? ' 🛥️' : ' 🚗') : '';
     const specimens = mine ? sampleChips(p.samples) : maskedChips(p.samples);   // your in-transit hand (not droppable; force-stashed at a research site)
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
-    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' 🛶' : ''}` +
-      ` ${p.prestige} prestige · ${p.money}$ · <b>Σ ${vp}</b><br>` +
+    const apBox = id === ctx.currentPlayer && !ctx.gameover ? ` <span class="ap">${p.ap} AP</span>` : '';
+    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' 🛶' : ''}${apBox}` +
+      ` · 🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b><br>` +
       `${specimens}${gearChips(p.gear)}${empties}</div>`;
   }).join('');
 
