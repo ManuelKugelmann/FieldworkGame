@@ -45,7 +45,6 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 export const catDC = (color: number) => CATALOGUE_DC + color;   // difficulty = colour tier: the number on a discovery (red 0 … violet 3) IS its catalogue DC (6–9)
-const DIFF_REWARD = 0.33;   // prestige premium per unit of pinned-colour difficulty a goal demands (so harder colours pay more)
 const gearTag = (g: GearItem) => g.kind === 'field' ? `${g.field} kit` : g.kind;   // log label for a gear kit
 const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more gear piece (discoveries are uncapped)
 
@@ -540,6 +539,9 @@ const unstash: Move<GState> = ({ G, ctx }, i = 0) => {   // i = index into the c
 // Poker grammar (discipline = rank, colour = suit) made CONCRETE: each project pins specific values, so two players can race the same question.
 // A project is a list of PARTS; each part needs `count` discoveries pinned by discipline and/or colour. Owned fill first; ≤MAX_CITE shortfall cites others' published. Discoveries used are CONSUMED into the publisher's pool.
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
+// discipline rarity (≈ inverse of measured supply: geo most abundant 0 · zoo/arch mid 1 · bot rarest 2) — feeds the rarity-skewed payout
+const DISC_RARITY: Record<DType, number> = { geo: 0, zoo: 1, bot: 2, arch: 1 };
+const RARITY_K = 0.45;   // prestige premium per unit of component rarity (discipline rarity + colour difficulty)
 const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
@@ -569,24 +571,24 @@ function assemble(G: GState, id: string, owned: Discovery[], citable: Discovery[
 function buildGoalDeck(rand: () => number): Pattern[] {
   const colors = Array.from({ length: COLORS }, (_, i) => i);
   const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  // reward reflects difficulty: a part pinned to colour c demands DC (6+c) finds, so add a premium for the hard colours it forces (free-colour parts → forage the easy red, no premium)
-  let n = 0; const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => {
-    const diff = parts.reduce((s, pt) => s + pt.count * (pt.color ?? 0), 0);
-    return { id: `g${n++}`, label, parts, prestige: prestige + Math.round(diff * DIFF_REWARD), money };
+  // reward = a size-based base + a premium for the RARITY of the components a hand demands (discipline rarity + colour difficulty)
+  let n = 0; const cardRarity = (p: GoalPart) => (p.type ? DISC_RARITY[p.type] : 0) + (p.color ?? 0);
+  const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => {
+    const rarity = parts.reduce((s, pt) => s + pt.count * cardRarity(pt), 0);
+    return { id: `g${n++}`, label, parts, prestige: prestige + Math.round(rarity * RARITY_K), money };
   };
-  const next = (t: DType) => DTYPES[(DTYPES.indexOf(t) + 1) % 4];
-  const half = <T>(a: T[]) => a.filter((_, i) => i % 2 === 0);   // ~half the premium variants → simple targets dominate the pool more
+  // ALL potential hands (every discipline/colour combo) — payout is what separates the common from the rare
+  const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
+  const ordered = DTYPES.flatMap(a => DTYPES.filter(b => b !== a).map(b => [a, b] as [DType, DType]));   // ordered pairs (full house a-over-b)
   const deck: Pattern[] = [
-    // attainable 3-card / 4-card bread-and-butter — favoured, but low value (a steep gradient discourages spamming small hands)
     ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 4, 1)),
     ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 4, 1)),
-    ...DTYPES.map(t => mk(`${t} + ${next(t)} two pair`, [{ count: 2, type: t }, { count: 2, type: next(t) }], 4, 1)),
-    // premium 5-card / both-axes — only ~half as many copies, worth chasing
-    ...half(DTYPES).map(t => mk(`${t} full house`, [{ count: 3, type: t }, { count: 2, type: next(t) }], 6, 2)),
-    ...half(colors).map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], 6, 2)),
-    ...half(DTYPES).map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 6, 2)),
-    ...half(colors).map(c => mk(`${COL_NAME[c]} ${DTYPES[c % 4]} triple`, [{ count: 3, type: DTYPES[c % 4], color: c }], 5, 2)),   // both-axes
-    mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t })), 3, 1),
+    ...pairs.map(([a, b]) => mk(`${a} + ${b} two pair`, [{ count: 2, type: a }, { count: 2, type: b }], 4, 1)),
+    ...ordered.map(([a, b]) => mk(`${a} full house over ${b}`, [{ count: 3, type: a }, { count: 2, type: b }], 6, 2)),
+    ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 7, 2)),
+    ...colors.map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], 6, 2)),
+    ...DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} triple`, [{ count: 3, type: t, color: c }], 5, 2))),   // both-axes
+    mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t })), 4, 1),
     mk('colour straight', colors.map(c => ({ count: 1, color: c })), 3, 1),
   ];
   return shuf(deck);
@@ -672,12 +674,14 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   }
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
-  if (p.ap >= 1 && tile.finds.length) {   // catalogue the find that best advances an open project (build a hand toward a question)
+  if (p.ap >= 1 && tile.finds.length) {   // catalogue the find that best advances an open project — and, early, lean on your specialty
+    const myDisc = ROLE_DISC[p.role], early = p.samples.length < 4 ? 12 : 4;   // focus own discipline early (where the +3 pays off), fade later
     let bestI = 0, bestScore = -1;
     for (let i = 0; i < tile.finds.length; i++) {
       const trial = [...p.samples, tile.finds[i]];
-      let score = 0;
-      for (const g of G.goals) { const r = evalGoal(g, trial, cit); score = Math.max(score, (r.ok ? 1000 : 0) + r.slots.filter(s => s.state === 'have').length * 10 + g.prestige); }
+      let goal = 0;
+      for (const g of G.goals) { const r = evalGoal(g, trial, cit); goal = Math.max(goal, (r.ok ? 1000 : 0) + r.slots.filter(s => s.state === 'have').length * 10 + g.prestige); }
+      const score = goal + (tile.finds[i].type === myDisc ? early : 0);   // prefer your specialty (more so while your hand is still small)
       if (score > bestScore) { bestScore = score; bestI = i; }
     }
     return { move: 'catalogue', args: [bestI] };
