@@ -48,6 +48,7 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
+export const CARS: { count: 'perPlayer' | number } = { count: 'perPlayer' };   // shared cars at base — 'perPlayer' (one each) or a fixed scarce total (e.g. 2)
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 export const catDC = (color: number) => CATALOGUE_DC + color;   // difficulty = colour tier: the number on a discovery (red 0 … violet 3) IS its catalogue DC (6–9)
@@ -817,7 +818,8 @@ export const Expedition: Game<GState> = {
     const rv = map.findIndex(t => t.hotspot === 'riverVillage');   // the shared canoe waits at the little river village (falls back to base if the river isn't reachable on foot)
     map[rv >= 0 ? rv : start].equipment.push({ kind: 'boat' });
     const moor = rv >= 0 ? nbrs(rv).find(j => map[j] && map[j].terrain === 'water') : undefined;   // moor a shared motorboat on the large river beside the village
-    const vehicles: Vehicle[] = Array.from({ length: ctx.numPlayers }, () => ({ pos: start, driver: null, trunk: [], kind: 'car' as const }));   // one shared car per player, at base
+    const carN = CARS.count === 'perPlayer' ? ctx.numPlayers : Math.min(CARS.count, ctx.numPlayers);   // shared cars at base (per-player, or a fixed scarce count)
+    const vehicles: Vehicle[] = Array.from({ length: carN }, () => ({ pos: start, driver: null, trunk: [], kind: 'car' as const }));
     if (moor !== undefined) vehicles.push({ pos: moor, driver: null, trunk: [], kind: 'motorboat' });
     const roleBag = [...ROLES]; { const rr = prng((seed ^ 0x2545f491) >>> 0); for (let i = roleBag.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [roleBag[i], roleBag[j]] = [roleBag[j], roleBag[i]]; } }   // specialist roles shuffled per match (not fixed by seat)
     return {

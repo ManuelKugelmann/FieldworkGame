@@ -117,7 +117,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const mine = human.has(id);   // you only see colours of the seats you control; opponents' are concealed
     const vp = p.prestige + Math.floor(p.money / 4);
     const drove = G.vehicles.find(v => v.driver === id);
-    const driving = drove ? (drove.kind === 'motorboat' ? ' 🛥️' : ' 🚗') : '';
+    const driving = drove ? ` <span class="chip">${drove.kind === 'motorboat' ? '🛥️ boat' : '🚗 car'}</span>` : '';   // boarded vehicle, shown in the player card
     const specimens = mine ? sampleChips(p.samples) : maskedChips(p.samples);   // your in-transit hand (not droppable; force-stashed at a research site)
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
     const isCur = id === ctx.currentPlayer && !ctx.gameover;
@@ -137,7 +137,17 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
     const pubAP = publishCost(cur.pubs);   // publish AP cost rises with each publish
     const carHere = G.vehicles.find(v => v.pos === cur.pos);
-    const labeled = legal.map(a => ({ a, label: actionLabel(a, tile, G.goals, cur, carHere) })).filter((x): x is { a: Action; label: string } => x.label !== null)
+    const seenBoard = new Set<string>();   // multiple cars/boats on the tile → offer a single "Board car"/"Board boat"
+    const dedup = legal.filter(a => {
+      if (a.move !== 'board') return true;
+      const k = G.vehicles[a.args![0] as number]?.kind ?? 'car';
+      if (seenBoard.has(k)) return false; seenBoard.add(k); return true;
+    });
+    const labeled = dedup.map(a => {
+      let label = actionLabel(a, tile, G.goals, cur, carHere);
+      if (a.move === 'board' && label) label = G.vehicles[a.args![0] as number]?.kind === 'motorboat' ? 'Board boat' : 'Board car';
+      return { a, label };
+    }).filter((x): x is { a: Action; label: string } => x.label !== null)
       .map(x => x.a.move === 'publish' ? { ...x, label: `${x.label} · ${pubAP}AP` } : x);
     const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6, stash: 7, unstash: 8 };
     const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
