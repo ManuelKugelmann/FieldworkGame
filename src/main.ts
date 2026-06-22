@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate, publishCost, GEAR_MAX, MONSOON_END } 
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, maskedChips, gearChips, emptySlots, logToasts, prettyLog, publishPreviews,
+  actionLabel, describeTile, sampleChips, maskedChips, gearChips, emptySlots, logToasts, prettyLog, publishPreviews, roleBadge,
   type Action, type Toast,
 } from './render';
 
@@ -123,7 +123,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
     const pubBox = isCur ? ` 📜<span class="ap">−${publishCost(p.pubs)} AP</span>` : '';
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
-    return `<div class="${c}"><div class="who" style="color:${PLAYER_COLOR[+id % 4]}">Player ${+id + 1}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
+    return `<div class="${c}"><div class="who" style="color:${PLAYER_COLOR[+id % 4]}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
       `<div class="stat">🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b></div>` +
       `<div class="inv">${specimens || dot}</div><div class="inv">${gearChips(p.gear) || dot}${empties}</div></div>`;
   }).join('');

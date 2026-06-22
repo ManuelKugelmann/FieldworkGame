@@ -5,6 +5,10 @@ export type Terrain = 'grassland' | 'jungle' | 'rocky' | 'ruins' | 'water' | 'vo
 export type Bridge = 'road' | 'foot';
 export type DType = 'geo' | 'zoo' | 'bot' | 'arch';
 export interface Discovery { type: DType; color: number; }
+// player specialists: a permanent catalogue bonus for their discipline (cosmetic colour = their preferred biome's lean)
+export type Role = 'geologist' | 'zoologist' | 'botanist' | 'archaeologist';
+export const ROLE_DISC: Record<Role, DType> = { geologist: 'geo', zoologist: 'zoo', botanist: 'bot', archaeologist: 'arch' };
+export const ROLES: Role[] = ['botanist', 'zoologist', 'geologist', 'archaeologist'];
 // some cards in a terrain's stack are tile EVENTS (hazards/boons) — they fire on tile ENTER (when revealed), they're never collectible finds
 export type TileEventKind = 'rockslide' | 'animalAttack' | 'bushthieves' | 'helpfulNative';
 export interface TileEvent { event: TileEventKind; }
@@ -19,7 +23,7 @@ export interface Vehicle { pos: number; driver: string | null; trunk: Equip[]; k
 export type GearKind = 'g1' | 'g2' | 'g3' | 'field';
 export interface GearItem { kind: GearKind; field?: DType; }   // field = the discipline a 'field' kit boosts
 export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; rivers: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; cache: Discovery[]; }  // cache = discoveries DROPPED here (face-up, free to pick up); roads/paths/smallRivers(brooks)/blocked(cliffs)/rivers(channel linkage) = edge bitmasks N1 E2 S4 W8
-export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; gear: GearItem[]; boat: boolean; }  // samples (carried discoveries) are UNLIMITED; gear capped at GEAR_MAX; pubs = publish count (drives rising AP cost); boat = carrying the shared boat
+export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; gear: GearItem[]; boat: boolean; role: Role; }  // role = specialist (permanent catalogue bonus for its discipline)
 export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
@@ -36,6 +40,7 @@ const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
+export const ROLE_BONUS = 3;   // a specialist's permanent catalogue bonus for their own discipline
 export const MONSOON_END = 4;   // field season ends (epilogue begins) after this many monsoon events
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
@@ -395,8 +400,8 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   const village = rds.slice().sort((a, b) => Math.abs(dist(a, base) - mid) - Math.abs(dist(b, base) - mid))[0];
   if (free(village)) g[village].hotspot = 'village';              // road market, near the middle of the road
   if (free(byFar(allLand.filter(free))[0])) g[byFar(allLand.filter(free))[0]].hotspot = 'remote';   // farthest frontier — the wild 2nd research site (may be isolated → reach by boat)
-  const bank = [...reach].filter(i => free(i) && g[i].terrain !== 'water' && g[i].roads === 0 && nbrs(i).some(j => g[j].terrain === 'water'));   // reachable off-road land hugging the river
-  if (bank.length) g[bank.sort((a, b) => dist(a, base) - dist(b, base))[0]].hotspot = 'riverVillage';   // a little river-bank village (nearest reachable bank) — home of the shared boat
+  const fbs: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].bridge === 'foot' && free(i)) fbs.push(i);   // foot-bridge tiles (their crossing paths are laid just after — so reachable; reach can't see them yet)
+  if (fbs.length) g[fbs.sort((a, b) => dist(a, base) - dist(b, base))[0]].hotspot = 'riverVillage';   // riverside village sits ON the river at a foot crossing — home of the shared boat
   return true;
 }
 function generateMap(seed: number, dim: number): { map: Tile[]; start: number } {
@@ -593,7 +598,7 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   if (G.epilogue || p.ap < 1 || !tile.revealed || find < 0 || find >= tile.finds.length) return INVALID_MOVE;  // discoveries are uncapped in hand
   p.ap -= 1;
   const d = tile.finds[find], tag = `${d.type}${d.color}`, dc = catDC(d.color);   // higher-colour finds are harder to catalogue
-  const roll = random.D6() + random.D6() + gearBonus(p.gear, d.type);   // gear steadies the dice (field kit only for its discipline)
+  const roll = random.D6() + random.D6() + gearBonus(p.gear, d.type) + (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0);   // gear + specialist bonus (role only for its discipline)
   if (roll >= dc) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll}/${dc} ✓ collected`); }
   else if (roll >= dc - 2) G.log.push(`catalogue ${tag} ${roll}/${dc} ◦ stayed`);   // a near miss (within 2) leaves the find for another attempt — fewer rolls destroy it
   else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
@@ -801,7 +806,7 @@ export const Expedition: Game<GState> = {
     if (moor !== undefined) vehicles.push({ pos: moor, driver: null, trunk: [], kind: 'motorboat' });
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
-        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false }])),
+        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false, role: ROLES[i % ROLES.length] }])),
       map, cols: N, rows: N, base: start,
       vehicles,
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand), water: buildPool('water', colorRand) },

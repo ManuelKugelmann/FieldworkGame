@@ -1,8 +1,8 @@
 // Shared board rendering + small UI helpers, used by BOTH frontends (the lean
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
-import type { GState, Tile, Discovery, Pattern, GearItem, PlayerS, Vehicle } from './game';
-import { targetAP, evalGoal, GEAR_PRICE, catDC } from './game';
+import type { GState, Tile, Discovery, Pattern, GearItem, PlayerS, Vehicle, Role } from './game';
+import { targetAP, evalGoal, GEAR_PRICE, catDC, ROLE_DISC } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -50,6 +50,9 @@ export const prettyLog = (line: string) => line.replace(/\b(geo|zoo|bot|arch)(\d
 const COL_SQUARE = ['🟩', '🟦', '🟨'];   // the 3 discovery colours as squares (green blue yellow)
 // compact iconic project label: e.g. "3 💎", "2 💎 + 2 🐾", "5 🟥" (no "of a kind" prose)
 export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ? DTYPE_SYMBOL[p.type] : ''}${p.color !== undefined ? COL_SQUARE[p.color] : ''}`).join(' + ');
+// specialist badge: discipline icon + name, tinted by the player's preferred-biome colour (cosmetic)
+const ROLE_COLOR: Record<Role, number> = { botanist: 0, zoologist: 0, geologist: 1, archaeologist: 2 };   // green / green / blue / yellow
+export const roleBadge = (role: Role) => `<span title="+3 catalogue on ${ROLE_DISC[role]}" style="color:${DCOLOR[ROLE_COLOR[role]]};font-weight:600">${DTYPE_SYMBOL[ROLE_DISC[role]]} ${role[0].toUpperCase()}${role.slice(1)}</span>`;
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#6f7a30', jungle: '#1f5247', rocky: '#5e5e68', ruins: '#6e603a', water: '#244a5c', void: '#0b0f0a',  // grass yellow-green · forest teal-green · rock silver-grey · ruins beige-gold · water swampy blue
@@ -128,7 +131,7 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 
 // label for a non-spatial action button (move/drive are board clicks -> null)
 export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: PlayerS, car?: Vehicle): string | null {
-  if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)} (DC ${catDC(d.color)})` : null; }
+  if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)} · 🎲≥${catDC(d.color)}` : null; }
   if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${goalLabel(g)} (+${g.prestige}P)` : 'Publish'; }
   if (a.move === 'buy') { const k = a.args![0] as string, f = a.args![1] as Discovery['type'] | undefined;
     if (k === 'boat') return 'Buy boat (−5$)'; if (k === 'car') return 'Buy car (−8$)';
@@ -151,7 +154,7 @@ export function describeTile(G: GState, i: number): string {
   const t = G.map[i];
   const bits = [`#${i}`, t.bridge ? `${t.bridge} bridge` : t.terrain];
   if (t.roads) bits.push('road');
-  if (t.hotspot) bits.push(t.hotspot);
+  if (t.hotspot) bits.push({ base: 'research base', remote: 'frontier base', village: 'village', riverVillage: 'river village' }[t.hotspot]);
   if (t.smallRivers) bits.push('brook');
   if (t.blocked) bits.push('cliff edge');
   const research = t.hotspot === 'base' || t.hotspot === 'remote';
@@ -236,8 +239,12 @@ function linkLayer(cctx: CanvasRenderingContext2D, G: GState, mask: (t: Tile) =>
 // cliff: a dark band covering ~1/3 of tile `a` on the affected side (toward `b` = a+1 East or a+cols South) — no border line
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
   const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34, east = b === a + 1;
-  const bx = east ? x + CELL - third : x, by = east ? y : y + CELL - third, bw = east ? third : CELL, bh = east ? CELL : third;
-  cctx.fillStyle = CLIFF_FILL; cctx.fillRect(bx, by, bw, bh);
+  const jag = CELL * 0.08, segs = 7, inner = east ? x + CELL - third : y + CELL - third;
+  cctx.fillStyle = CLIFF_FILL; cctx.beginPath();   // band with a JAGGED inner edge (rocky)
+  if (east) { cctx.moveTo(x + CELL, y); cctx.lineTo(x + CELL, y + CELL); for (let k = 0; k <= segs; k++) cctx.lineTo(inner + (k % 2 ? jag : 0), y + CELL - (k / segs) * CELL); }
+  else { cctx.moveTo(x, y + CELL); cctx.lineTo(x + CELL, y + CELL); for (let k = 0; k <= segs; k++) cctx.lineTo(x + CELL - (k / segs) * CELL, inner + (k % 2 ? jag : 0)); }
+  cctx.closePath(); cctx.fill();
+  const bx = east ? inner : x, by = east ? y : inner, bw = east ? third : CELL, bh = east ? CELL : third;
   cctx.fillStyle = 'rgba(168,168,176,0.6)';   // rock-grey scree dots on the cliff side
   const seed = a * 13 + (east ? 3 : 7);
   for (let k = 0; k < 6; k++) { cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.7, CELL * 0.026), 0, 7); cctx.fill(); }
@@ -283,19 +290,20 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     if (c < G.cols - 1 && (t.blocked & 2)) borderBar(cctx, i, i + 1, G);
     if (r < G.rows - 1 && (t.blocked & 4)) borderBar(cctx, i, i + G.cols, G);
   }
-  // grass/forest-green dots on the river BANKS only — water-tile edges that face land, never the flow (river-link) direction
+  // biome fringe dots on EVERY tile, hugging edges that carry NO link (never overlaying roads/rivers/paths/brooks)
+  const FRINGE: Partial<Record<Tile['terrain'], [string, string]>> = { grassland: ['#9ec24e', '#6fa83a'], jungle: ['#5a9e4a', '#2f6f2f'], rocky: ['#9a9aa2', '#74747c'], ruins: ['#c9b27a', '#a89058'], water: ['#9ec24e', '#3a7a3a'] };
   for (let i = 0; i < G.map.length; i++) {
-    const t = G.map[i]; if (t.terrain !== 'water') continue;
+    const t = G.map[i]; const pal = FRINGE[t.terrain]; if (!pal) continue;
     const c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL, cx = x + CELL / 2, cy = y + CELL / 2;
-    const land = (j: number) => G.map[j] && G.map[j].terrain !== 'water' && G.map[j].terrain !== 'void';
-    const banks: [number, number, number][] = [];   // [x, y, axis] axis 0 = horizontal edge (spread along x), 1 = vertical edge (spread along y)
-    if (!(t.rivers & 1) && r > 0 && land(i - G.cols)) banks.push([cx, y + CELL * 0.08, 0]);
-    if (!(t.rivers & 2) && c < G.cols - 1 && land(i + 1)) banks.push([x + CELL * 0.92, cy, 1]);
-    if (!(t.rivers & 4) && r < G.rows - 1 && land(i + G.cols)) banks.push([cx, y + CELL * 0.92, 0]);
-    if (!(t.rivers & 8) && c > 0 && land(i - 1)) banks.push([x + CELL * 0.08, cy, 1]);
+    const link = t.roads | t.paths | t.smallRivers | t.rivers, real = (j: number) => G.map[j] && G.map[j].terrain !== 'void';
+    const edges: [number, number, number][] = [];   // [x, y, axis] axis 0 = horizontal edge (spread along x), 1 = vertical
+    if (!(link & 1) && r > 0 && real(i - G.cols)) edges.push([cx, y + CELL * 0.08, 0]);
+    if (!(link & 2) && c < G.cols - 1 && real(i + 1)) edges.push([x + CELL * 0.92, cy, 1]);
+    if (!(link & 4) && r < G.rows - 1 && real(i + G.cols)) edges.push([cx, y + CELL * 0.92, 0]);
+    if (!(link & 8) && c > 0 && real(i - 1)) edges.push([x + CELL * 0.08, cy, 1]);
     let s = 0;
-    for (const [bx, by, axis] of banks) for (let k = 0; k < 6; k++, s++) {   // more dots, tighter to the edge
-      cctx.fillStyle = s % 2 ? '#3a7a3a' : '#9ec24e';   // forest / grass green mix
+    for (const [bx, by, axis] of edges) for (let k = 0; k < 5; k++, s++) {
+      cctx.fillStyle = pal[s % 2];
       const along = (hash01(i, s * 2) - 0.5) * CELL * 0.74, perp = (hash01(i, s * 2 + 1) - 0.5) * CELL * 0.12;
       cctx.beginPath(); cctx.arc(bx + (axis ? perp : along), by + (axis ? along : perp), Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill();
     }

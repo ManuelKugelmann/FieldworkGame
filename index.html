@@ -31,6 +31,8 @@
       #plan { display: flex; flex-direction: column; gap: .35rem; }
       .manual { margin-top: .8rem; font-size: .66rem; color: #88a888; line-height: 1.5; }
       .manual h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .35rem; }
+      .manual ul { margin: 0; padding-left: .95rem; }
+      .manual li { margin: .12rem 0; }
       @media (max-width: 1023px) {   /* mobile: research band sits on top, laid out horizontally */
         .research { flex-basis: 100%; max-width: none; }
         #plan { flex-direction: row; flex-wrap: wrap; gap: .4rem; justify-content: center; }
@@ -85,14 +87,19 @@
       <div class="research"><h2 id="research-h">Research</h2><div id="plan"></div>
         <div class="manual">
           <h2>Manual</h2>
-          <div>🚶 move 1 AP on path/road · 2 AP off-path</div>
-          <div>🛶 canoe 1 AP (water+brooks) · 🚗 car 3 road/AP · 🛥 boat 4 river/AP</div>
-          <div>flip a find: 1 AP — roll 2d6 + gear ≥ DC</div>
-          <div>DC by colour: 🟩 6 · 🟦 7 · 🟨 8</div>
-          <div>📜 publish at a base: AP cost rises 1→4 (shared pool)</div>
-          <div>💎 geo · 🐾 zoo · 🌿 bot · 🏺 arch</div>
-          <div>🏢 base · ⛺ frontier (research) · 🏘️ 🏠 markets</div>
-          <div>gear 🔍 🔬 ⚗️ +1/+2/+3 · 🧪 field kit (1 discipline)</div>
+          <ul>
+            <li>🚶 move: 1 AP on a path/road · 2 AP off-path</li>
+            <li>🛶 canoe 1 AP (water+brooks) · 🚗 car 3 road/AP · 🛥 boat 4 river/AP</li>
+            <li>finds flip face-up when you enter a tile (free)</li>
+            <li>catalogue a find: 1 AP — 🎲 2d6 + gear ≥ difficulty (take it on a success)</li>
+            <li>difficulty by colour: 🟩 6 · 🟦 7 · 🟨 8</li>
+            <li>📜 publish at a base: AP cost rises 1→4 (from its shared pool)</li>
+            <li>specialists: +3 🎲 catalogue on their own discipline</li>
+            <li>💎 geo · 🐾 zoo · 🌿 bot · 🏺 arch</li>
+            <li>🏢 research base · ⛺ frontier base (the 2 shared pools)</li>
+            <li>🏘️ village · 🏠 river village (markets)</li>
+            <li>gear 🔍 🔬 ⚗️ +1/+2/+3 · 🧪 field kit (1 discipline)</li>
+          </ul>
         </div>
       </div>
       <div class="boardwrap">
