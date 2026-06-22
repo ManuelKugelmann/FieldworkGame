@@ -29,6 +29,11 @@
       .research { flex: 0 1 13rem; min-width: 11rem; max-width: 14rem; display: flex; flex-direction: column; order: -1; }
       .research h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
       #plan { display: flex; flex-direction: column; gap: .35rem; align-items: stretch; }
+      /* phones: research spans full width and its cards lay out in 2 columns (instead of a single narrow column) */
+      @media (max-width: 760px) {
+        .research { flex: 1 1 100%; min-width: 0; max-width: none; }
+        #plan { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+      }
       .manual { margin-top: .8rem; font-size: .66rem; color: #88a888; line-height: 1.5; }
       .manual h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .35rem; }
       .manual ul { margin: 0; padding-left: .95rem; }
@@ -76,7 +81,7 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-D1-rYWJ-.js"></script>
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-DW5MX0vp.js"></script>
     <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-mYaTiqGJ.js">
   </head>
   <body>
