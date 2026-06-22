@@ -115,7 +115,7 @@ const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
   ruins:     { arch: 8, geo: 2, bot: 1, zoo: 1 },   // a dig site — archaeology dominates the stack
 };
-export const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 2, jungle: 2, rocky: 3, ruins: 3 };  // each biome leans toward a signature colour (index into the 4-colour palette)
+export const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 0, jungle: 1, rocky: 2, ruins: 3 };  // DISTINCT signature colour per biome pool (0 red … 3 violet) — drives the pool's colour bias, its catalogue DC lean, and the discovery back-side colour; difficulty rises grassland→ruins
 // tile-event deck mixed into each terrain stack: a base weighting, with a per-terrain lean toward its signature hazard
 const EVENT_RATE = 0.12;            // ~ this fraction of a terrain stack is events (the rest are specimens)
 const BUSHTHIEF_TAKE = 3;           // $ a bushthief camp robs from the entering player
