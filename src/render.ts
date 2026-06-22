@@ -175,8 +175,8 @@ export function sampleChips(ds: Discovery[]): string {
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 // gear kit icons (public — opponents see your gear). lab-bench symbols by tier; 🧪 + discipline = field kit
-export const GEAR_GLYPH: Record<string, string> = { g1: '🔍', g2: '🔬', g3: '⚗️' };   // lens / microscope / lab still (+1 / +2 / +3)
-export const gearIcon = (g: GearItem) => g.kind === 'field' ? `🧪${DTYPE_SYMBOL[g.field!]}` : GEAR_GLYPH[g.kind];
+export const GEAR_GLYPH: Record<string, string> = { g1: '🔬', g2: '🔬', g3: '🔬' };   // all generic gear shares the microscope icon; the coloured +X conveys strength
+export const gearIcon = (g: GearItem) => g.kind === 'field' ? `🔬${DTYPE_SYMBOL[g.field!]}` : GEAR_GLYPH[g.kind];   // field kit = microscope + its discipline icon
 // gear chip: icon + a coloured "+X" bonus — tinted by discipline for a field kit, WHITE for generic (all-discipline) gear
 export function gearChips(gear: GearItem[]): string {
   return gear.map(g => {
