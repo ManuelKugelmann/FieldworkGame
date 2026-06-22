@@ -63,8 +63,8 @@
       .pat .cell.have { opacity: 1; }
       .pat .cell.cite { opacity: .55; }                 /* fillable by citing another player */
       .pat .cell.need { opacity: .5; filter: grayscale(.5); }   /* still missing — dimmed but readable */
-      .pat .tok { display: inline-flex; align-items: center; justify-content: center; min-width: 1em; height: 1.15em; padding: 0 .14em; border-radius: 3px; vertical-align: middle; font-size: .95em; }   /* a project slot token (full size) */
-      .pat .tok.lit { background: #d8d8dc; }   /* symbol-only token on a light pill so the icon reads on the dark card */
+      .pat .tok { display: inline-flex; align-items: center; justify-content: center; width: 1.25em; height: 1.25em; border-radius: 3px; vertical-align: middle; font-size: .95em; box-sizing: border-box; flex: none; }   /* a project slot token — fixed size, same for colour / icon / both */
+      .pat .tok.lit { background: #6f6f77; }   /* symbol-only token on a muted grey pill so the icon reads on the dark card */
       .pat .thr { margin-left: .15rem; }
       .pat .thr.i { filter: drop-shadow(0 0 2px #e0563a); }   /* imminent snipe */
       .pat .thr.h { opacity: .65; }                            /* hidden colour race */
@@ -76,8 +76,8 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-2rYd_7ar.js"></script>
-    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-B6zAFAtm.js">
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-Doa_Herx.js"></script>
+    <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-BIOu3Z2s.js">
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
@@ -96,8 +96,10 @@
       </div>
     </div>
     <div class="controls">
-      <label class="seat"><input type="checkbox" id="human0" checked /> P0 human</label>
-      <label class="seat"><input type="checkbox" id="human1" /> P1 human</label>
+      <label class="seat"><input type="checkbox" id="human0" checked /> Player 1</label>
+      <label class="seat"><input type="checkbox" id="human1" /> Player 2</label>
+      <label class="seat"><input type="checkbox" id="human2" /> Player 3</label>
+      <label class="seat"><input type="checkbox" id="human3" /> Player 4</label>
       <button id="hint">Bot: suggest move</button>
       <button id="reset">New match</button>
       <span class="built" id="built"></span>
