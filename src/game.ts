@@ -43,7 +43,7 @@ const DIFF_REWARD = 0.33;   // prestige premium per unit of pinned-colour diffic
 const gearTag = (g: GearItem) => g.kind === 'field' ? `${g.field} kit` : g.kind;   // log label for a gear kit
 const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more gear piece (discoveries are uncapped)
 
-const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, ruins: 4, water: 0, void: 0 };  // max potential tokens; rolled 0..max, skewed so 0–1 is common and the max is rare; ruins are a deep dig site
+const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, ruins: 4, water: 2, void: 0 };  // max potential tokens; ruins = deep dig site; water = aquatic biome (forage by canoe/boat)
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const isLandT = (t: Tile) => t.terrain !== 'water' && t.terrain !== 'void';  // any walkable land terrain
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
@@ -114,8 +114,9 @@ const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   jungle:    { bot: 4, zoo: 4, arch: 2, geo: 1 },   // dense flora + fauna (botany & zoology rich)
   rocky:     { geo: 6, arch: 3, zoo: 1, bot: 1 },   // lots of geology, mid archaeology, low zoo/botany
   ruins:     { arch: 8, geo: 2, bot: 1, zoo: 1 },   // a dig site — archaeology dominates the stack
+  water:     { zoo: 4, bot: 2, geo: 1, arch: 1 },   // aquatic life — fish/fauna heavy, some flora
 };
-export const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 0, jungle: 1, rocky: 2, ruins: 3 };  // DISTINCT signature colour per biome pool (0 red … 3 violet) — drives the pool's colour bias, its catalogue DC lean, and the discovery back-side colour; difficulty rises grassland→ruins
+export const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 0, jungle: 1, rocky: 2, ruins: 3, water: 1 };  // signature colour index per biome pool (0 red … 3 violet) — drives the pool's colour bias + catalogue-DC lean (water leans green like jungle)
 // tile-event deck mixed into each terrain stack: a base weighting, with a per-terrain lean toward its signature hazard
 const EVENT_RATE = 0.12;            // ~ this fraction of a terrain stack is events (the rest are specimens)
 const BUSHTHIEF_TAKE = 3;           // $ a bushthief camp robs from the entering player
@@ -797,7 +798,7 @@ export const Expedition: Game<GState> = {
         [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false }])),
       map, cols: N, rows: N, base: start,
       vehicles,
-      pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand) },
+      pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand), water: buildPool('water', colorRand) },
       ...(() => { const deck = buildGoalDeck(prng((seed ^ 0x9e3779b1) >>> 0)); return { goals: deck.slice(0, POOL_SIZE), goalDeck: deck.slice(POOL_SIZE) }; })(),   // deal the open-question pool; rest is the refill deck
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
     };

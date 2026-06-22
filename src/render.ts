@@ -2,7 +2,7 @@
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
 import type { GState, Tile, Discovery, Pattern, GearItem, PlayerS, Vehicle } from './game';
-import { targetAP, evalGoal, GEAR_PRICE, catDC, BIOME_COLOR } from './game';
+import { targetAP, evalGoal, GEAR_PRICE, catDC } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -45,6 +45,9 @@ const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo
 export const prettyFind = (d: Discovery) => `${DTYPE_SYMBOL[d.type]}${d.color}`;                     // e.g. 💎3
 const prettyTag = (tag: string) => { const m = tag.match(/^([a-z]+)(\d+)$/); return m && isDType(m[1]) ? DTYPE_SYMBOL[m[1]] + m[2] : tag; };   // "geo3" → "💎3"
 export const prettyLog = (line: string) => line.replace(/\b(geo|zoo|bot|arch)(\d)/g, (_m, t, c) => DTYPE_SYMBOL[t as Discovery['type']] + c);   // swap type words for icons in a log line
+const COL_SQUARE = ['🟥', '🟩', '🟨', '🟪'];   // the 4 discovery colours as squares (red green gold violet)
+// compact iconic project label: e.g. "3 💎", "2 💎 + 2 🐾", "5 🟥" (no "of a kind" prose)
+export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ? DTYPE_SYMBOL[p.type] : ''}${p.color !== undefined ? COL_SQUARE[p.color] : ''}`).join(' + ');
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#5d6e3a', jungle: '#2c4a20', rocky: '#565659', ruins: '#7a6a45', water: '#1d4c79', void: '#0b0f0a',
@@ -62,6 +65,9 @@ const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles
 const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
 const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // lab · frontier · village (market) · little river house
+const BIOME_ICON: Partial<Record<Tile['terrain'], string>> = { grassland: '🌾', jungle: '🌴', rocky: '🪨', ruins: '🏛️', water: '🌊' };   // small per-tile biome marker (corner)
+// discovery BACK-SIDE / pool colour — a brighter tint of the biome's tile colour (so the back reads as "from this biome")
+const BIOME_POOL: Partial<Record<Tile['terrain'], string>> = { grassland: '#8fa84e', jungle: '#4a8a35', rocky: '#8a8a90', ruins: '#b0975a', water: '#3a78b0' };
 
 export const dpr = () => Math.max(1, Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
 
@@ -121,7 +127,7 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 // label for a non-spatial action button (move/drive are board clicks -> null)
 export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: PlayerS, car?: Vehicle): string | null {
   if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)} (DC ${catDC(d.color)})` : null; }
-  if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${g.label} (+${g.prestige}P)` : 'Publish'; }
+  if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${goalLabel(g)} (+${g.prestige}P)` : 'Publish'; }
   if (a.move === 'buy') { const k = a.args![0] as string, f = a.args![1] as Discovery['type'] | undefined;
     if (k === 'boat') return 'Buy boat (−5$)'; if (k === 'car') return 'Buy car (−8$)';
     return k === 'field' ? `Buy 🧪${DTYPE_SYMBOL[f!]} (−${GEAR_PRICE.field}$)` : `Buy ${GEAR_GLYPH[k]}+${k[1]} (−${GEAR_PRICE[k as GearItem['kind']]}$)`; }
@@ -207,7 +213,7 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
       if (er.ok) { threat = 'imminent'; break; }
       if (er.slots.filter(s => s.state === 'have').length >= Math.ceil(need * 0.6)) threat = 'building';
     }
-    return { name: goal.id, label: goal.label, reward: `+${goal.prestige}P +${goal.money}$`, cells, ready: r.ok, threat };
+    return { name: goal.id, label: goalLabel(goal), reward: `+${goal.prestige}P +${goal.money}$`, cells, ready: r.ok, threat };
   });
 }
 
@@ -232,7 +238,7 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null, glyph = '🚗') {
-  const fs = CELL * 0.4, cy = y + CELL * 0.64;           // below centre, nudged toward the tile centre
+  const fs = CELL * 0.36, cy = y + CELL * 0.82;          // hugging the bottom edge of the tile (clear of the centre discovery/pawn)
   cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
   cctx.globalAlpha = driver ? 1 : 0.55;                 // empty vehicle dimmer
   cctx.fillText(glyph, x + CELL / 2, cy);
@@ -288,11 +294,13 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillText(HOTSPOT_LABEL[t.hotspot], x + CELL / 2, y + CELL / 2 + 1);
     }
     if (t.terrain === 'void') continue;
+    const bi = BIOME_ICON[t.terrain];   // small biome marker hugging the top-left corner
+    if (bi && CELL >= 16) { cctx.font = `${CELL * 0.24}px ${EMOJI_FONT}`; cctx.textAlign = 'left'; cctx.textBaseline = 'top'; cctx.globalAlpha = 0.85; cctx.fillText(bi, x + CELL * 0.04, y + CELL * 0.03); cctx.globalAlpha = 1; }
     // 8 perimeter slots (4 corners + 4 edge midpoints): discovery dots first, then cached gear/boat
     const d = Math.max(6, CELL * 0.17), m = CELL / 2, rr = Math.max(2.5, CELL * 0.075);
-    const slots = [[x + d, y + d], [x + CELL - d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d], [x + m, y + d], [x + d, y + m], [x + CELL - d, y + m], [x + m, y + CELL - d]];   // corners, then T/L/R, bottom-centre last (kept clear for the car)
-    const rrBig = Math.max(4, CELL * 0.13);   // (also used by the dropped-cache dots below)
-    let s = 0;
+    const corners = [[x + d, y + d], [x + CELL - d, y + d], [x + d, y + CELL - d], [x + CELL - d, y + CELL - d]];   // dropped discoveries / pool cards
+    const edges = [[x + m, y + d], [x + CELL - d, y + m], [x + d, y + m]];   // edge centres (top, right, left) — dropped gear/boat (bottom-centre left for the car)
+    const rrBig = Math.max(4, CELL * 0.13);
     const cx0 = x + m, cy0 = y + m;
     if (t.revealed && t.finds.length) {   // FLIPPED face-up on entry: the real discovery — type colour, rimmed in its discovery colour, with the type icon
       const f = t.finds[0];
@@ -300,25 +308,25 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.fillStyle = DTYPE_COLOR[f.type]; cctx.fill();
       cctx.lineWidth = Math.max(2, CELL * 0.07); cctx.strokeStyle = DCOLOR[f.color]; cctx.stroke();   // colour-axis rim
       if (CELL >= 20) { cctx.font = `${CELL * 0.3}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[f.type], cx0, cy0 + 0.5); }
-    } else if (!t.revealed && t.richness > 0) {   // BACK-SIDE: an un-entered discovery — only the biome pool's signature colour shows (BIOME_COLOR)
+    } else if (!t.revealed && t.richness > 0) {   // BACK-SIDE: an un-entered discovery — only the biome pool colour shows (a brighter tint of the tile)
       cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.24, 0, 7);
-      cctx.fillStyle = DCOLOR[BIOME_COLOR[t.terrain] ?? 0]; cctx.fill();
+      cctx.fillStyle = BIOME_POOL[t.terrain] ?? GRAY_BIOME[t.terrain]; cctx.fill();
       cctx.lineWidth = 1.25; cctx.strokeStyle = 'rgba(0,0,0,0.5)'; cctx.stroke();
     }
-    for (const dc of t.cache) {   // DROPPED discoveries: face-up, free to grab — drawn with a white ring to read as "left here"
-      if (s >= 8) break;
-      const sx = slots[s][0], sy = slots[s][1]; s++;
+    t.cache.forEach((dc, k) => {   // DROPPED discoveries / research-pool cards: corners, white-ringed
+      if (k >= 4) return;
+      const sx = corners[k][0], sy = corners[k][1];
       cctx.fillStyle = DTYPE_COLOR[dc.type];
       cctx.beginPath(); cctx.arc(sx, sy, rrBig, 0, 7); cctx.fill();
-      cctx.lineWidth = 1.5; cctx.strokeStyle = '#e8f0e2'; cctx.stroke();   // white rim = dropped/grabbable
+      cctx.lineWidth = 1.5; cctx.strokeStyle = '#e8f0e2'; cctx.stroke();
       if (CELL >= 22) { cctx.font = `${rrBig * 1.7}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[dc.type], sx, sy + 0.5); }
-    }
-    for (const e of t.equipment) {   // cached items take the next free slots
-      if (s >= 8) break;
-      const sx = slots[s][0], sy = slots[s][1]; s++;
+    });
+    t.equipment.forEach((e, k) => {   // DROPPED gear / boat on the edge centres
+      if (k >= edges.length) return;
+      const sx = edges[k][0], sy = edges[k][1];
       if (e.kind === 'boat') { cctx.font = `${CELL * 0.34}px ${EMOJI_FONT}`; cctx.fillText('🛶', sx, sy); }
       else { const sq = rr * 1.9; cctx.fillStyle = EQUIP_COLOR; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.fillRect(sx - sq / 2, sy - sq / 2, sq, sq); cctx.strokeRect(sx - sq / 2, sy - sq / 2, sq, sq); }
-    }
+    });
   }
 
   // 4) vehicles (top-right; driver-coloured when occupied)
@@ -352,12 +360,13 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     cctx.strokeRect(c * CELL + 1.5, r * CELL + 1.5, CELL - 3, CELL - 3);
   }
 
-  // 7) players (offset when sharing a tile; current player ringed white)
+  // 7) players — parked off-centre on a per-player diagonal (midway corner↔centre), clear of the centre discovery
+  const DIAG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];   // P0 TL, P1 TR, P2 BL, P3 BR
   for (const [tile, ids] of positions) {
     const c = tile % G.cols, r = (tile / G.cols) | 0;
-    ids.forEach((id, k) => {
-      const ox = ids.length > 1 ? (k - (ids.length - 1) / 2) * 10 : 0;
-      const cx = c * CELL + CELL / 2 + ox, cy = r * CELL + CELL / 2;
+    ids.forEach((id) => {
+      const dg = DIAG[+id % 4];
+      const cx = c * CELL + CELL / 2 + dg[0] * CELL * 0.24, cy = r * CELL + CELL / 2 + dg[1] * CELL * 0.24;
       cctx.beginPath(); cctx.arc(cx, cy, CELL * 0.15, 0, 7);   // smaller pawn → the biome discovery circle shows around it
       cctx.fillStyle = PLAYER_COLOR[+id % 4]; cctx.fill();
       cctx.lineWidth = id === ctxState.currentPlayer ? 2.5 : 1.25;

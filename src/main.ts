@@ -104,17 +104,14 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
         : (c.icon ?? '·');
       return `<span class="cell ${c.state}">${inner}</span>`;
     }).join('');
-    const threat = pat.threat === 'imminent' ? '<span class="thr i" title="a rival can complete this — race!">🏃</span>'
-      : pat.threat === 'building' ? '<span class="thr b" title="a rival is collecting these disciplines">👀</span>'
-      : pat.threat === 'hidden' ? '<span class="thr h" title="colour goal — rivals\' colours are hidden, could be sniped">🎲</span>' : '';
     return `<span class="pat${pat.ready ? ' ready' : ''}"><span class="nm">${pat.label}</span>` +
-      `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${threat}${pat.ready ? ' ✓' : ''}</span>`;
+      `<span class="cells">${cells}</span><span class="rw">${pat.reward}</span>${pat.ready ? ' ✓' : ''}</span>`;
   }).join('');
 
   const remoteT = G.map.findIndex(t => t.hotspot === 'remote');   // the two shared open pools (community cards): base lab + frontier research site
   const poolRow = (label: string, ds: typeof G.map[number]['cache']) =>
     `<div class="pcard"><span class="who">${label}</span> <span style="opacity:.7">${ds.length}</span> ${ds.length ? sampleChips(ds) : '<span style="opacity:.5">empty</span>'}</div>`;
-  $('pools').innerHTML = poolRow('🔬 Lab (base)', G.map[G.base].cache) + (remoteT >= 0 ? poolRow('⛺ Frontier', G.map[remoteT].cache) : '');
+  $('pools').innerHTML = poolRow('🔬 Research base', G.map[G.base].cache) + (remoteT >= 0 ? poolRow('⛺ Frontier base', G.map[remoteT].cache) : '');
 
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';
@@ -125,9 +122,8 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const specimens = mine ? sampleChips(p.samples) : maskedChips(p.samples);   // your in-transit hand (not droppable; force-stashed at a research site)
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
     return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' 🛶' : ''}` +
-      ` ${vp} pts · ${p.prestige} prestige · ${p.money}$<br>` +
-      `<span style="opacity:.7">inv:</span> ${specimens}${gearChips(p.gear)}${empties} ` +
-      `<span style="opacity:.7">pub:</span> ${p.published.length}</div>`;
+      ` ${p.prestige} prestige · ${p.money}$ · <b>Σ ${vp}</b><br>` +
+      `${specimens}${gearChips(p.gear)}${empties}</div>`;
   }).join('');
 
   const bar = $('actions'); bar.innerHTML = '';
