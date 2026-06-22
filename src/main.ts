@@ -97,7 +97,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
     : `${phase}${isBot ? ' · 🤖' : ''}${endWarn}`;
-  $('research-h').innerHTML = ctx.gameover ? 'Research' : `📜 Research <span class="ap">−${publishCost(cur.pubs)} AP</span>`;   // publish AP cost (rises with your publish count)
+  $('research-h').innerHTML = ctx.gameover ? 'Research' : `📜 Research <span class="ap">${publishCost(cur.pubs)} AP</span>`;   // publish AP cost (rises with your publish count)
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
     const cells = pat.cells.map(c =>   // no progress indicators — just the target tokens; the player reads the pools/inventory themselves
@@ -121,7 +121,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
     const isCur = id === ctx.currentPlayer && !ctx.gameover;
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
-    const pubBox = isCur ? ` 📜<span class="ap">−${publishCost(p.pubs)} AP</span>` : '';
+    const pubBox = isCur ? ` 📜<span class="ap">${publishCost(p.pubs)} AP</span>` : '';
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
     return `<div class="${c}"><div class="who" style="color:${PLAYER_COLOR[+id % 4]}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
       `<div class="stat">🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b></div>` +
