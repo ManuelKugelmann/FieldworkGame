@@ -337,20 +337,21 @@ function genOnce(seed: number) {
   const junctions = [...footBr];
   for (let k = 0; k < 9 && roadAll.length; k++) junctions.push(roadAll[Math.floor(rand() * roadAll.length)]);   // more trail seeds anywhere on the roads
   for (let i = 0; i < N * N; i++) if (g[i].hotspot) junctions.push(i);   // every special location
+  const linked = (a: number, b: number) => { const bit = dirBit(a, b); return ((g[a].roads | g[a].paths | g[a].smallRivers | g[a].rivers) & bit) !== 0; };   // any connector already on this edge? (one connector per edge)
   for (const sd of junctions) {
-    const o0 = nbrs(sd).filter(j => g[j].terrain === 'jungle' && !(g[sd].blocked & dirBit(sd, j))); if (!o0.length) continue;
+    const o0 = nbrs(sd).filter(j => g[j].terrain === 'jungle' && !(g[sd].blocked & dirBit(sd, j)) && !linked(sd, j)); if (!o0.length) continue;
     let i = o0[Math.floor(rand() * o0.length)]; linkP(sd, i);
-    for (let s = 0; s < 7; s++) { const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].paths & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j))); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }   // longer trails (up to 8 tiles) that fizzle into the jungle
+    for (let s = 0; s < 7; s++) { const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].blocked & dirBit(i, j)) && !linked(i, j)); if (!opts.length) break; const j = opts[Math.floor(rand() * opts.length)]; linkP(i, j); i = j; } }   // longer trails (up to 8 tiles) that fizzle into the jungle
 
   // BROOKS: boat-only side-channels — mouth at a river tile, then link consecutive land cells inward (laid as edge overlays, not water)
   let brooksMade = 0; const brookN = 2 + (rand() < 0.5 ? 0 : 1);   // more brooks (2–3)
   for (let att = 0; att < 22 && brooksMade < brookN; att++) {
     const rt = allRiver[Math.floor(rand() * allRiver.length)];
-    const mouths = nbrs(rt).filter(j => g[j].terrain === 'jungle' && !(g[rt].blocked & dirBit(rt, j)));
+    const mouths = nbrs(rt).filter(j => g[j].terrain === 'jungle' && !(g[rt].blocked & dirBit(rt, j)) && !linked(rt, j));
     if (!mouths.length) continue;
     let i = mouths[Math.floor(rand() * mouths.length)]; linkS(rt, i); let len = 1;
     for (let s = 0; s < 4; s++) {
-      const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].smallRivers & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
+      const opts = nbrs(i).filter(j => g[j].terrain === 'jungle' && !(g[i].blocked & dirBit(i, j)) && !linked(i, j));
       if (!opts.length) break;
       const j = opts[Math.floor(rand() * opts.length)]; linkS(i, j); i = j; len++;
     }
