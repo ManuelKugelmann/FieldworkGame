@@ -80,13 +80,22 @@
       .toast.out { opacity: 0; transition: opacity .4s ease; }
       @keyframes toastIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     </style>
-    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-k-Q2w4MP.js"></script>
+    <script type="module" crossorigin src="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/main-ub0LKacv.js"></script>
     <link rel="modulepreload" crossorigin href="/FieldworkGame/claude-tile-links-movement-gcio6z/assets/render-CSnPrVrX.js">
   </head>
   <body>
     <div id="toasts" class="toasts"></div>
     <div class="cols">
-      <div class="research"><h2 id="research-h">Research</h2><div id="plan"></div>
+      <div class="research"><h2 id="research-h">Research</h2><div id="plan"></div></div>
+      <div class="boardwrap">
+        <canvas id="board"></canvas>
+        <div class="panel inspectwrap"><div id="inspect">hover a tile</div></div>
+      </div>
+      <div class="side">
+        <div id="status"></div>
+        <div class="panel"><h2>Research pools</h2><div id="pools"></div></div>
+        <div class="panel"><h2>Players</h2><div id="players"></div></div>
+        <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
         <div class="manual">
           <h2>Manual</h2>
           <ul>
@@ -103,16 +112,6 @@
             <li>gear 🔍 🔬 ⚗️ +1/+2/+3 · 🧪 field kit (1 discipline)</li>
           </ul>
         </div>
-      </div>
-      <div class="boardwrap">
-        <canvas id="board"></canvas>
-        <div class="panel inspectwrap"><div id="inspect">hover a tile</div></div>
-      </div>
-      <div class="side">
-        <div id="status"></div>
-        <div class="panel"><h2>Research pools</h2><div id="pools"></div></div>
-        <div class="panel"><h2>Players</h2><div id="players"></div></div>
-        <div class="panel"><h2>Your actions</h2><div id="actions"></div></div>
         <div class="panel"><h2>Log</h2><pre id="log"></pre></div>
       </div>
     </div>
