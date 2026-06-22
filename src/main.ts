@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate, publishCost, GEAR_MAX, MONSOON_END } 
 import type { GState } from './game';
 import {
   playerColor, EVENT_LABEL, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, maskedChips, gearChips, emptySlots, logToasts, prettyLog, publishPreviews, roleBadge,
+  actionLabel, describeTile, sampleChips, maskedChips, gearChips, roleBonusChip, emptySlots, logToasts, prettyLog, publishPreviews, roleBadge,
   type Action, type Toast,
 } from './render';
 
@@ -126,7 +126,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
     return `<div class="${c}"><div class="who" style="color:${playerColor(p.role)}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
       `<div class="stat">🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b></div>` +
-      `<div class="inv">${specimens || dot}</div><div class="inv">${gearChips(p.gear) || dot}${empties}</div></div>`;
+      `<div class="inv">${specimens || dot}</div><div class="inv">${roleBonusChip(p.role)}${gearChips(p.gear)}${empties}</div></div>`;
   }).join('');
 
   const bar = $('actions'); bar.innerHTML = '';

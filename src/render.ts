@@ -2,7 +2,7 @@
 // Canvas viewer in main.ts and the bgio React board). Drawing the car and
 // dropped equipment lives here once so the two stay in visual sync.
 import type { GState, Tile, Discovery, Pattern, GearItem, PlayerS, Vehicle, Role } from './game';
-import { targetAP, evalGoal, GEAR_PRICE, catDC, ROLE_DISC } from './game';
+import { targetAP, evalGoal, GEAR_PRICE, catDC, ROLE_DISC, gearBonus, ROLE_BONUS } from './game';
 
 export type Action = { move?: string; args?: unknown[]; event?: string };
 
@@ -177,9 +177,18 @@ export function sampleChips(ds: Discovery[]): string {
 // gear kit icons (public — opponents see your gear). lab-bench symbols by tier; 🧪 + discipline = field kit
 export const GEAR_GLYPH: Record<string, string> = { g1: '🔍', g2: '🔬', g3: '⚗️' };   // lens / microscope / lab still (+1 / +2 / +3)
 export const gearIcon = (g: GearItem) => g.kind === 'field' ? `🧪${DTYPE_SYMBOL[g.field!]}` : GEAR_GLYPH[g.kind];
+// gear chip: icon + a coloured "+X" bonus — tinted by discipline for a field kit, WHITE for generic (all-discipline) gear
 export function gearChips(gear: GearItem[]): string {
-  return gear.map(g => `<span class="chip gear" title="${g.kind === 'field' ? `${g.field} field kit` : `+${g.kind[1]} to every catalogue`}">${gearIcon(g)}</span>`).join('');
+  return gear.map(g => {
+    const isField = g.kind === 'field';
+    const b = isField ? gearBonus([g], g.field!) : Number(g.kind.slice(1));
+    const color = isField ? DTYPE_COLOR[g.field!] : '#ffffff';
+    const title = isField ? `${g.field} field kit +${b}` : `+${b} to every catalogue`;
+    return `<span class="chip gear" title="${title}">${gearIcon(g)} <b style="color:${color}">+${b}</b></span>`;
+  }).join('');
 }
+// the specialist's innate discipline bonus — shown in the gear row, tinted by discipline
+export const roleBonusChip = (role: Role) => `<span class="chip gear" title="specialist +${ROLE_BONUS} on ${ROLE_DISC[role]}">${DTYPE_SYMBOL[ROLE_DISC[role]]} <b style="color:${DTYPE_COLOR[ROLE_DISC[role]]}">+${ROLE_BONUS}</b></span>`;
 export const emptySlots = (n: number) => '<span class="slot empty"></span>'.repeat(Math.max(0, n));
 // your own hand, but each chip is clickable to DROP it (leaves it face-up on your tile)
 export function handChips(ds: Discovery[]): string {
