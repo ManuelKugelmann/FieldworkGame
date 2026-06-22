@@ -8,9 +8,10 @@ export type Action = { move?: string; args?: unknown[]; event?: string };
 
 // ---- toasts: classify fresh G.log lines into transient success/fail/info notices ----
 export interface Toast { text: string; kind: 'good' | 'bad' | 'info'; }
-const EVENT_TEXT: Record<string, string> = {
-  tailwind: 'Tailwind · +1 AP', cache: 'Cache · +2$', grant: 'Grant · +3$', calm: 'Calm',
-  rockslide: 'Rockslide!', washout: 'Washout · bridge severed', monsoon: 'Monsoon brewing',
+// concise explanation of each global (whole-round, all-players) event — used for the status line AND the toast
+export const EVENT_LABEL: Record<string, string> = {
+  tailwind: '🌬️ Tailwind · +1 AP for all', cache: '💰 Cache · +2$ for all', grant: '🎓 Grant · +3$ for all', calm: '☀️ Calm · nothing stirs',
+  rockslide: '⛏ Rockslide · a jungle tile turns rocky', washout: '🌊 Washout · a crossing severed', monsoon: '⛈ Monsoon · field season nearing its end',
 };
 export function classifyLog(line: string): Toast | null {
   const mv = line.match(/→ \d+ \(-(\d+)ap/);   // foot/boat move: toast the AP it cost
@@ -27,7 +28,7 @@ export function classifyLog(line: string): Toast | null {
   if (line.startsWith('buy gear')) return { text: 'Bought gear', kind: 'info' };
   if (line.startsWith('drive')) return { text: 'Drove · −1 AP', kind: 'info' };
   if (line.startsWith('helilift')) return { text: 'Helilift → base · −1 AP', kind: 'info' };
-  if (line.startsWith('event:')) { const id = line.slice(6).split(' ')[0]; const bad = id === 'rockslide' || id === 'washout' || id === 'monsoon'; return { text: EVENT_TEXT[id] ?? id, kind: bad ? 'bad' : 'info' }; }
+  if (line.startsWith('event:')) { const id = line.slice(6).split(' ')[0]; const bad = id === 'rockslide' || id === 'washout' || id === 'monsoon'; return { text: EVENT_LABEL[id] ?? id, kind: bad ? 'bad' : 'info' }; }
   return null;
 }
 export function logToasts(fromIdx: number, log: string[]): Toast[] {
@@ -54,9 +55,6 @@ export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ?
 export const roleBadge = (role: Role) => `<span title="+3 catalogue on ${ROLE_DISC[role]}" style="color:${DTYPE_COLOR[ROLE_DISC[role]]};font-weight:600">${DTYPE_SYMBOL[ROLE_DISC[role]]} ${role[0].toUpperCase()}${role.slice(1)}</span>`;
 // a player's colour follows their SPECIALIZATION (discipline), not their seat: geologist blue · zoologist red · botanist green · archaeologist yellow
 export const playerColor = (role: Role) => DTYPE_COLOR[ROLE_DISC[role]];
-// the one global event in effect this round, shown near the turn info
-export const EVENT_LABEL: Record<string, string> = { tailwind: '🌬️ tailwind +1AP', cache: '💰 cache +2$', grant: '🎓 grant +3$', calm: '☀️ calm', rockslide: '⛏ rockslide', washout: '🌊 washout', monsoon: '⛈ monsoon' };
-
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#6f7a30', jungle: '#1f5247', rocky: '#5e5e68', ruins: '#6e603a', water: '#244a5c', void: '#0b0f0a',  // grass yellow-green · forest teal-green · rock silver-grey · ruins beige-gold · water swampy blue
 };

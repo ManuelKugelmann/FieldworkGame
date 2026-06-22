@@ -94,7 +94,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   const isBot = !human.has(ctx.currentPlayer);
   const left = MONSOON_END - G.monsoon;   // rounds until the field season ends; only telegraphed once the monsoon starts
   const endWarn = !G.epilogue && G.monsoon > 0 ? ` · ⛈ ${left} round${left === 1 ? '' : 's'} to end of field season` : '';
-  const roundEv = !G.epilogue && G.roundEvent && EVENT_LABEL[G.roundEvent] ? ` · this round: ${EVENT_LABEL[G.roundEvent]}` : '';   // the one global event affecting everyone this round
+  const roundEv = !G.epilogue && G.roundEvent && EVENT_LABEL[G.roundEvent] ? ` · ${EVENT_LABEL[G.roundEvent]}` : '';   // the one global event affecting everyone this round
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
     : `${phase}${isBot ? ' · 🤖' : ''}${roundEv}${endWarn}`;
