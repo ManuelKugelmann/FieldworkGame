@@ -2,7 +2,7 @@ import { Client } from 'boardgame.io/client';
 import { Expedition, botAction, enumerate, publishCost, GEAR_MAX, MONSOON_END } from './game';
 import type { GState } from './game';
 import {
-  PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
+  playerColor, EVENT_LABEL, drawBoard, fitCanvas, tileAt, spatialTargets,
   actionLabel, describeTile, sampleChips, maskedChips, gearChips, emptySlots, logToasts, prettyLog, publishPreviews, roleBadge,
   type Action, type Toast,
 } from './render';
@@ -92,11 +92,12 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   const cur = G.players[ctx.currentPlayer];
   const phase = G.epilogue ? 'Lab season' : `Turn ${ctx.turn}`;
   const isBot = !human.has(ctx.currentPlayer);
-  const left = MONSOON_END - G.monsoon;   // turns until the field season ends; only telegraphed once the monsoon starts
-  const endWarn = !G.epilogue && G.monsoon > 0 ? ` · ⛈ ${left} turn${left === 1 ? '' : 's'} to end of field season` : '';
+  const left = MONSOON_END - G.monsoon;   // rounds until the field season ends; only telegraphed once the monsoon starts
+  const endWarn = !G.epilogue && G.monsoon > 0 ? ` · ⛈ ${left} round${left === 1 ? '' : 's'} to end of field season` : '';
+  const roundEv = !G.epilogue && G.roundEvent && EVENT_LABEL[G.roundEvent] ? ` · this round: ${EVENT_LABEL[G.roundEvent]}` : '';   // the one global event affecting everyone this round
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
-    : `${phase}${isBot ? ' · 🤖' : ''}${endWarn}`;
+    : `${phase}${isBot ? ' · 🤖' : ''}${roundEv}${endWarn}`;
   $('research-h').innerHTML = ctx.gameover ? 'Research' : `📜 Research <span class="ap">${publishCost(cur.pubs)} AP</span>`;   // publish AP cost (rises with your publish count)
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
@@ -123,7 +124,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
     const pubBox = isCur ? ` 📜<span class="ap">${publishCost(p.pubs)} AP</span>` : '';
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
-    return `<div class="${c}"><div class="who" style="color:${PLAYER_COLOR[+id % 4]}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
+    return `<div class="${c}"><div class="who" style="color:${playerColor(p.role)}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
       `<div class="stat">🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b></div>` +
       `<div class="inv">${specimens || dot}</div><div class="inv">${gearChips(p.gear) || dot}${empties}</div></div>`;
   }).join('');

@@ -32,6 +32,7 @@ export interface GState {
   goals: Pattern[];                                        // the open research questions on the board (shared, consumed on publish)
   goalDeck: Pattern[];                                     // remaining projects; the pool refills from here on a claim
   events: string[]; monsoon: number; epilogue: boolean; labLeft: number; log: string[];   // epilogue = indoor lab season
+  roundEvent: string;   // the ONE global event drawn by the start player this round (affects every player); '' = none
 }
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
@@ -290,7 +291,7 @@ function genOnce(seed: number) {
   // CLIFFS: 1–2 uncrossable edges on some land tiles (plain land↔land only — never roads/water/bridges, so the laid networks stay intact)
   const isLand = (i: number) => { const t = g[i].terrain; return t === 'jungle' || t === 'rocky' || t === 'grassland' || t === 'ruins'; };
   for (let i = 0; i < N * N; i++) {
-    if (!isLand(i) || rand() >= 0.14) continue;                    // only some land tiles get cliffs
+    if (!isLand(i) || rand() >= 0.22) continue;                    // more cliffs: ~22% of land tiles get a cliff edge (was 14%)
     const cand = nbrs(i).filter(j => isLand(j) && !(g[i].roads & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
     const k = 1 + (rand() < 0.5 ? 0 : 1);
     for (let n2 = 0; n2 < k && cand.length; n2++) block(i, cand.splice(Math.floor(rand() * cand.length), 1)[0]);
@@ -775,18 +776,19 @@ export const enumerate = (G: GState, ctx: any) => {
 
 // ---- event deck: mostly benign; monsoon stacked at the BOTTOM = telegraphed end ----
 function buildDeck(seed: number): string[] {
-  const top = [...Array(15).fill('tailwind'), ...Array(9).fill('cache'), ...Array(6).fill('grant'),
-    ...Array(9).fill('calm'), ...Array(5).fill('rockslide'), ...Array(5).fill('washout')];  // 49 benign+hazard → longer field season
+  // ONE event drawn per ROUND now (not per turn), so the deck is sized in rounds: ~10 benign + monsoons → ~14-round field season
+  const top = [...Array(3).fill('tailwind'), ...Array(2).fill('cache'), ...Array(1).fill('grant'),
+    ...Array(2).fill('calm'), ...Array(1).fill('rockslide'), ...Array(1).fill('washout')];  // 10 benign+hazard
   let z = seed >>> 0; const rnd = () => (z = (z * 1664525 + 1013904223) >>> 0) / 2 ** 32;
   for (let i = top.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [top[i], top[j]] = [top[j], top[i]]; }
-  return [...top, ...Array(6).fill('monsoon')];                       // drawn last (game ends at MONSOON_END)
+  return [...top, ...Array(6).fill('monsoon')];                       // drawn last (field ends when the MONSOON_END-th monsoon surfaces)
 }
 const intactCrossings = (map: Tile[]) => map.filter(t => t.bridge && (t.roads || t.paths)).length;
-function applyEvent(G: GState, id: string, random: any, cur: string) {
-  const p = G.players[cur];
-  if (id === 'tailwind') p.ap += 1;                                   // gust of energy this turn
-  else if (id === 'cache') p.money += 2;
-  else if (id === 'grant') p.money += 3;
+function applyEvent(G: GState, id: string, random: any) {
+  const players = Object.values(G.players);
+  if (id === 'tailwind') { /* +1 AP for everyone this round — applied per-turn via G.roundEvent in onBegin */ }
+  else if (id === 'cache') players.forEach(p => p.money += 2);        // global windfall — every player banks it
+  else if (id === 'grant') players.forEach(p => p.money += 3);
   else if (id === 'calm') { /* no-op filler */ }
   else if (id === 'rockslide') {                                      // mutate a jungle tile → rocky (loses its finds)
     const land = G.map.map((t, i) => ({ t, i })).filter(({ t }) => t.terrain === 'jungle' && !t.hotspot);
@@ -825,14 +827,16 @@ export const Expedition: Game<GState> = {
       vehicles,
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand), water: buildPool('water', colorRand) },
       ...(() => { const deck = buildGoalDeck(prng((seed ^ 0x9e3779b1) >>> 0)); return { goals: deck.slice(0, POOL_SIZE), goalDeck: deck.slice(POOL_SIZE) }; })(),   // deal the open-question pool; rest is the refill deck
-      events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'],
+      events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'], roundEvent: '',
     };
   },
   moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, stash, unstash },
   // EXPERIMENTAL knob — lab-season frontier merge: 'last' (only last player), 'all' (at lab start, everyone), 'none'
   turn: {
     onBegin: ({ G, ctx, random }) => {
-      if (!G.epilogue) { const id = G.events.shift(); if (id) applyEvent(G, id, random, ctx.currentPlayer); }   // field turn: draw 1 event
+      if (!G.epilogue && (ctx.turn - 1) % ctx.numPlayers === 0) {   // ROUND start: the start player draws ONE global event for the whole round (affects every player)
+        const id = G.events.shift() ?? ''; G.roundEvent = id; if (id) applyEvent(G, id, random);
+      }
       const p = G.players[ctx.currentPlayer];
       if (G.epilogue) {
         // LAB SEASON, round-robin: each player in turn (P0 first) dumps their hand into the shared base pool and publishes ONE research; leftovers pass to the next. The frontier pool merges into the base pool just before the LAST player.
@@ -850,7 +854,7 @@ export const Expedition: Game<GState> = {
         }
         p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
       } else {
-        p.ap = START_AP;   // flat AP every turn; the wandering start player (not an AP handicap) is what rotates the first-mover edge
+        p.ap = START_AP + (G.roundEvent === 'tailwind' ? 1 : 0);   // flat AP + this round's global tailwind bonus; wandering start (not an AP handicap) rotates the first-mover edge
       }
     },
     order: {

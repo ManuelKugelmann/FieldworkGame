@@ -41,7 +41,7 @@ export const MIN_CELL = 16;        // floor so the board stays usable on tiny vi
 export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#5fdf6f'];   // gold · cyan · orange · green (no purple)
 const PAWN_DIAG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];   // per-player off-centre diagonal: P0 TL · P1 TR · P2 BL · P3 BR
 const hash01 = (i: number, k: number) => { let h = (Math.imul(i + 1, 2654435761) ^ Math.imul(k + 1, 40503)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return ((h >>> 8) & 0xffff) / 0xffff; };   // deterministic per-tile jitter
-export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff6f5c', bot: '#57e466', arch: '#bb9cff' };   // brighter, stronger discovery colours
+export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff4444', bot: '#57e466', arch: '#bb9cff' };   // discipline colours: geo gold · zoo red · bot green · arch purple
 export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: '💎', zoo: '🐾', bot: '🌿', arch: '🏺' };   // type icon — used everywhere instead of the geo/zoo/bot/arch words
 const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo' || s === 'bot' || s === 'arch';
 export const prettyFind = (d: Discovery) => `${DTYPE_SYMBOL[d.type]}${d.color}`;                     // e.g. 💎3
@@ -53,6 +53,10 @@ export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ?
 // specialist badge: discipline icon + name, tinted by the player's preferred-biome colour (cosmetic)
 const ROLE_COLOR: Record<Role, number> = { botanist: 0, zoologist: 0, geologist: 1, archaeologist: 2 };   // green / green / blue / yellow
 export const roleBadge = (role: Role) => `<span title="+3 catalogue on ${ROLE_DISC[role]}" style="color:${DCOLOR[ROLE_COLOR[role]]};font-weight:600">${DTYPE_SYMBOL[ROLE_DISC[role]]} ${role[0].toUpperCase()}${role.slice(1)}</span>`;
+// a player's colour follows their SPECIALIZATION (discipline), not their seat: botanist green · zoologist red · geologist gold · archaeologist purple
+export const playerColor = (role: Role) => DTYPE_COLOR[ROLE_DISC[role]];
+// the one global event in effect this round, shown near the turn info
+export const EVENT_LABEL: Record<string, string> = { tailwind: '🌬️ tailwind +1AP', cache: '💰 cache +2$', grant: '🎓 grant +3$', calm: '☀️ calm', rockslide: '⛏ rockslide', washout: '🌊 washout', monsoon: '⛈ monsoon' };
 
 const TERRAIN_FILL: Record<Tile['terrain'], string> = {
   grassland: '#6f7a30', jungle: '#1f5247', rocky: '#5e5e68', ruins: '#6e603a', water: '#244a5c', void: '#0b0f0a',  // grass yellow-green · forest teal-green · rock silver-grey · ruins beige-gold · water swampy blue
@@ -371,7 +375,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       if (v.driver !== null) {   // ride it just below the driver's pawn
         const dg = PAWN_DIAG[+v.driver % 4];
         const px = c * CELL + CELL / 2 + dg[0] * CELL * 0.24, py = r * CELL + CELL / 2 + dg[1] * CELL * 0.24 + CELL * 0.2;
-        carGlyph(cctx, px - CELL / 2, py - CELL * 0.82, PLAYER_COLOR[+v.driver % 4], glyph);
+        carGlyph(cctx, px - CELL / 2, py - CELL * 0.82, playerColor(G.players[v.driver].role), glyph);
       } else {   // parked & idle → sit on the bottom tile border, side by side
         const k = parked.indexOf(v), ox = parked.length > 1 ? (k - (parked.length - 1) / 2) * CELL * 0.3 : 0;
         carGlyph(cctx, c * CELL + ox, r * CELL + CELL * 0.06, null, glyph);
@@ -411,7 +415,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       const dg = PAWN_DIAG[+id % 4];
       const cx = c * CELL + CELL / 2 + dg[0] * CELL * 0.24, cy = r * CELL + CELL / 2 + dg[1] * CELL * 0.24;
       cctx.beginPath(); cctx.arc(cx, cy, CELL * 0.15, 0, 7);   // smaller pawn → the biome discovery circle shows around it
-      cctx.fillStyle = PLAYER_COLOR[+id % 4]; cctx.fill();
+      cctx.fillStyle = playerColor(G.players[id].role); cctx.fill();
       cctx.lineWidth = id === ctxState.currentPlayer ? 2.5 : 1.25;
       cctx.strokeStyle = id === ctxState.currentPlayer ? '#ffffff' : '#0b0f0a'; cctx.stroke();
       cctx.fillStyle = '#0b0f0a'; cctx.font = `bold ${CELL * 0.17}px ui-monospace, monospace`;
