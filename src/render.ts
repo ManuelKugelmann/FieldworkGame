@@ -242,7 +242,7 @@ function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: 
   const fs = CELL * 0.36, cy = y + CELL * 0.82;          // hugging the bottom edge of the tile (clear of the centre discovery/pawn)
   cctx.fillStyle = 'rgba(11,15,10,0.32)'; cctx.beginPath(); cctx.arc(x + CELL / 2, cy, fs * 0.62, 0, 7); cctx.fill();   // contrast disc so the boat/car reads on top of water + river links
   cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
-  cctx.globalAlpha = driver ? 1 : 0.55;                 // empty vehicle dimmer
+  cctx.globalAlpha = driver ? 1 : 0.82;                 // empty vehicle only slightly dimmer (still clearly visible)
   cctx.fillText(glyph, x + CELL / 2, cy);
   cctx.globalAlpha = 1;
   if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL / 2 + fs * 0.5, cy - fs * 0.3, 2.6, 0, 7); cctx.fill(); cctx.stroke(); }
@@ -348,9 +348,9 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
         const dg = PAWN_DIAG[+v.driver % 4];
         const px = c * CELL + CELL / 2 + dg[0] * CELL * 0.24, py = r * CELL + CELL / 2 + dg[1] * CELL * 0.24 + CELL * 0.2;
         carGlyph(cctx, px - CELL / 2, py - CELL * 0.82, PLAYER_COLOR[+v.driver % 4], glyph);
-      } else {
+      } else {   // parked & idle → sit on the bottom tile border, side by side
         const k = parked.indexOf(v), ox = parked.length > 1 ? (k - (parked.length - 1) / 2) * CELL * 0.3 : 0;
-        carGlyph(cctx, c * CELL + ox, r * CELL, null, glyph);
+        carGlyph(cctx, c * CELL + ox, r * CELL + CELL * 0.06, null, glyph);
       }
     });
   }
