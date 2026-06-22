@@ -64,8 +64,7 @@ const GRAY_BIOME = Object.fromEntries(
 ) as Record<Tile['terrain'], string>;
 const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
-const CLIFF_LINE = '#000000';      // impassable cliff edge — bold black bar along the full edge
-const CLIFF_FILL = 'rgba(20,18,16,0.5)';   // cliff band — covers ~1/3 of the affected tile side (matches printed tiles)
+const CLIFF_FILL = 'rgba(8,7,6,0.7)';   // cliff band — a dark in-tile marker covering ~1/3 of the affected tile side (no border line)
 const EQUIP_COLOR = '#cfd6c8';
 const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // lab · frontier · village (market) · little river house
 const BIOME_ICON: Partial<Record<Tile['terrain'], string>> = { grassland: '🌾', jungle: '🌴', rocky: '🪨', ruins: '🏛️', water: '🌊' };   // small per-tile biome marker (corner)
@@ -157,7 +156,7 @@ export function describeTile(G: GState, i: number): string {
   if (t.blocked) bits.push('cliff edge');
   const research = t.hotspot === 'base' || t.hotspot === 'remote';
   const cars = G.vehicles.filter(v => v.pos === i);
-  for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '🛶' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `${car.kind} (P${car.driver})` : `${car.kind} (empty)`) + tr); }
+  for (const car of cars) { const tr = car.trunk.length ? ` +trunk[${car.trunk.map(e => e.kind === 'boat' ? '🛶' : gearIcon(e.gear!)).join('')}]` : ''; bits.push((car.driver !== null ? `${car.kind} (Player ${+car.driver + 1})` : `${car.kind} (empty)`) + tr); }
   const items = t.equipment.map(e => e.kind === 'boat' ? '🛶' : gearIcon(e.gear!));
   if (items.length) bits.push('items: ' + items.join(' '));
   if (t.revealed && t.finds.length) bits.push('finds: ' + t.finds.map(prettyFind).join(' '));
@@ -167,7 +166,6 @@ export function describeTile(G: GState, i: number): string {
 }
 
 export function sampleChips(ds: Discovery[]): string {
-  if (!ds.length) return '<span style="opacity:.5">none</span>';
   return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
 }
 // gear kit icons (public — opponents see your gear). lab-bench symbols by tier; 🧪 + discipline = field kit
@@ -184,7 +182,6 @@ export function handChips(ds: Discovery[]): string {
 }
 // opponents see only the DISCIPLINE of your specimens, not the colour (a concealed poker hand)
 export function maskedChips(ds: Discovery[]): string {
-  if (!ds.length) return '<span style="opacity:.5">none</span>';
   return ds.map(d => `<span class="chip" style="color:#8aa0b4">${DTYPE_SYMBOL[d.type]}<span style="opacity:.5">?</span></span>`).join('');
 }
 
@@ -230,15 +227,11 @@ function edge(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState, c
 }
 
 // bold black bar along the FULL shared border between a & b = impassable cliff edge
-// cliff: a band covering ~1/3 of tile `a` on the affected side (toward `b` = a+1 East or a+cols South), with a crisp black edge line
+// cliff: a dark band covering ~1/3 of tile `a` on the affected side (toward `b` = a+1 East or a+cols South) — no border line
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
-  const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34, east = b === a + 1;
+  const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34;
   cctx.fillStyle = CLIFF_FILL;
-  if (east) cctx.fillRect(x + CELL - third, y, third, CELL); else cctx.fillRect(x, y + CELL - third, CELL, third);
-  cctx.strokeStyle = CLIFF_LINE; cctx.lineWidth = Math.max(3, CELL * 0.1); cctx.setLineDash([]); cctx.lineCap = 'butt';
-  cctx.beginPath();
-  if (east) { cctx.moveTo(x + CELL, y); cctx.lineTo(x + CELL, y + CELL); } else { cctx.moveTo(x, y + CELL); cctx.lineTo(x + CELL, y + CELL); }
-  cctx.stroke();
+  if (b === a + 1) cctx.fillRect(x + CELL - third, y, third, CELL); else cctx.fillRect(x, y + CELL - third, CELL, third);
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
@@ -303,7 +296,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     const bi = BIOME_ICON[t.terrain];   // 3 biome markers scattered (deterministically jittered) across the tile as texture
     if (bi && CELL >= 16) {
       const water = t.terrain === 'water';
-      cctx.textAlign = 'center'; cctx.textBaseline = 'middle'; cctx.globalAlpha = 0.8;
+      cctx.textAlign = 'center'; cctx.textBaseline = 'middle'; cctx.globalAlpha = t.terrain === 'rocky' ? 0.5 : 0.8;   // rocks dimmer
       cctx.font = water ? `bold ${CELL * 0.26}px ui-monospace, monospace` : `${CELL * 0.2}px ${EMOJI_FONT}`;
       if (water) cctx.fillStyle = '#7fc4e8';
       for (let k = 0; k < 3; k++) cctx.fillText(water ? '≈' : bi, x + CELL * (0.22 + hash01(i, k * 2) * 0.56), y + CELL * (0.22 + hash01(i, k * 2 + 1) * 0.56));
@@ -315,16 +308,15 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     const edges = [[x + m, y + d], [x + CELL - d, y + m], [x + d, y + m]];   // edge centres (top, right, left) — dropped gear/boat (bottom-centre left for the car)
     const rrBig = Math.max(4, CELL * 0.13);
     const cx0 = x + m, cy0 = y + m;
+    const shadow = () => { cctx.shadowColor = 'rgba(0,0,0,0.5)'; cctx.shadowBlur = CELL * 0.09; cctx.shadowOffsetY = CELL * 0.03; };
     if (t.revealed && t.finds.length) {   // FLIPPED face-up on entry: the real discovery — type colour, rimmed in its discovery colour, with the type icon
       const f = t.finds[0];
-      cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.26, 0, 7);
-      cctx.fillStyle = DTYPE_COLOR[f.type]; cctx.fill();
-      cctx.lineWidth = Math.max(2, CELL * 0.07); cctx.strokeStyle = DCOLOR[f.color]; cctx.stroke();   // colour-axis rim
-      if (CELL >= 20) { cctx.font = `${CELL * 0.3}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[f.type], cx0, cy0 + 0.5); }
+      cctx.save(); shadow(); cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.22, 0, 7); cctx.fillStyle = DTYPE_COLOR[f.type]; cctx.fill(); cctx.restore();
+      cctx.lineWidth = Math.max(2, CELL * 0.06); cctx.strokeStyle = DCOLOR[f.color]; cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.22, 0, 7); cctx.stroke();   // colour-axis rim
+      if (CELL >= 20) { cctx.font = `${CELL * 0.26}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[f.type], cx0, cy0 + 0.5); }
     } else if (!t.revealed && t.richness > 0 && !t.roads && !t.hotspot) {   // BACK-SIDE: an un-entered discovery — only where a find can actually appear (not roads/special locations)
-      cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.24, 0, 7);
-      cctx.fillStyle = BIOME_POOL[t.terrain] ?? GRAY_BIOME[t.terrain]; cctx.fill();
-      cctx.lineWidth = 1.25; cctx.strokeStyle = 'rgba(0,0,0,0.5)'; cctx.stroke();
+      cctx.save(); shadow(); cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.2, 0, 7); cctx.fillStyle = BIOME_POOL[t.terrain] ?? GRAY_BIOME[t.terrain]; cctx.fill(); cctx.restore();
+      cctx.lineWidth = 1; cctx.strokeStyle = 'rgba(0,0,0,0.45)'; cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.2, 0, 7); cctx.stroke();
     }
     t.cache.forEach((dc, k) => {   // DROPPED discoveries / research-pool cards: corners, white-ringed
       if (k >= 4) return;
@@ -397,7 +389,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
       cctx.lineWidth = id === ctxState.currentPlayer ? 2.5 : 1.25;
       cctx.strokeStyle = id === ctxState.currentPlayer ? '#ffffff' : '#0b0f0a'; cctx.stroke();
       cctx.fillStyle = '#0b0f0a'; cctx.font = `bold ${CELL * 0.17}px ui-monospace, monospace`;
-      cctx.fillText(id, cx, cy + 1);
+      cctx.fillText(String(+id + 1), cx, cy + 1);
     });
   }
 }

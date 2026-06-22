@@ -1,5 +1,5 @@
 import { Client } from 'boardgame.io/client';
-import { Expedition, botAction, enumerate, publishCost, GEAR_MAX } from './game';
+import { Expedition, botAction, enumerate, publishCost, GEAR_MAX, MONSOON_END } from './game';
 import type { GState } from './game';
 import {
   PLAYER_COLOR, drawBoard, fitCanvas, tileAt, spatialTargets,
@@ -91,22 +91,20 @@ function draw() {
 
 function renderHud(G: GState, ctx: any, legal: Action[]) {
   const cur = G.players[ctx.currentPlayer];
-  const phase = G.epilogue ? 'lab' : `T${ctx.turn}`;
+  const phase = G.epilogue ? 'Lab season' : `Turn ${ctx.turn}`;
   const isBot = !human.has(ctx.currentPlayer);
+  const left = MONSOON_END - G.monsoon;   // turns until the field season ends; only telegraphed once the monsoon starts
+  const endWarn = !G.epilogue && G.monsoon > 0 ? ` · ⛈ ${left} turn${left === 1 ? '' : 's'} to end of field season` : '';
   $('status').textContent = ctx.gameover
     ? `game over — winner P${ctx.gameover.winner}`
-    : `${phase}${isBot ? ' · 🤖' : ''} · 🌧${G.monsoon}/4`;
+    : `${phase}${isBot ? ' · 🤖' : ''}${endWarn}`;
   $('research-h').innerHTML = ctx.gameover ? 'Research' : `📜 Research <span class="ap">−${publishCost(cur.pubs)} AP</span>`;   // publish AP cost (rises with your publish count)
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
-    const cells = pat.cells.map(c => {
-      const inner = c.swatch && c.icon ? `<span class="sw ic" style="background:${c.swatch}">${c.icon}</span>`
-        : c.swatch ? `<span class="sw" style="background:${c.swatch}"></span>`
-        : (c.icon ?? '·');
-      return `<span class="cell ${c.state}">${inner}</span>`;
-    }).join('');
-    return `<span class="pat${pat.ready ? ' ready' : ''}">` +
-      `<span class="cells">${cells}</span><span class="rw">${pat.reward}${pat.ready ? ' ✓' : ''}</span></span>`;
+    const cells = pat.cells.map(c =>   // no progress indicators — just the target tokens; the player reads the pools/inventory themselves
+      c.swatch ? `<span class="tok" style="background:${c.swatch}">${c.icon ?? ''}</span>` : `<span class="tok lit">${c.icon ?? '·'}</span>`
+    ).join('');
+    return `<span class="pat"><span class="cells">${cells}</span><span class="rw">${pat.reward}</span></span>`;
   }).join('');
 
   const remoteT = G.map.findIndex(t => t.hotspot === 'remote');   // the two shared open pools (community cards): base lab + frontier research site
@@ -125,9 +123,10 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const isCur = id === ctx.currentPlayer && !ctx.gameover;
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
     const pubBox = isCur ? ` 📜<span class="ap">−${publishCost(p.pubs)} AP</span>` : '';
-    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">P${id}</span>${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}` +
-      ` · 🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b><br>` +
-      `${specimens}${gearChips(p.gear)}${empties}</div>`;
+    const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
+    return `<div class="${c}"><span class="who" style="color:${PLAYER_COLOR[+id % 4]}">Player ${+id + 1}</span>${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}` +
+      ` · 🎓 ${p.prestige} · ${p.money}$ · <b>Σ ${vp}</b>` +
+      `<div class="inv">${specimens || dot}</div><div class="inv">${gearChips(p.gear) || dot}${empties}</div></div>`;
   }).join('');
 
   const bar = $('actions'); bar.innerHTML = '';
