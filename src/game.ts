@@ -485,13 +485,14 @@ const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boat:
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
   return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `P${ctx.currentPlayer} 🛶→ ${dest} (-1ap)`);
 };
-const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into an unoccupied vehicle (free): a car you're stood on, or a motorboat moored on an adjacent river tile (hop aboard from the bank)
+const BOARD_COST = 1;   // money to climb into a vehicle (a small hire fee)
+const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into an unoccupied vehicle (costs BOARD_COST$): a car you're stood on, or a motorboat moored on an adjacent river tile (hop aboard from the bank)
   const p = G.players[ctx.currentPlayer], car = G.vehicles[v];
-  if (G.epilogue || !car || car.driver !== null) return INVALID_MOVE;
+  if (G.epilogue || !car || car.driver !== null || p.money < BOARD_COST) return INVALID_MOVE;
   const aboard = car.pos === p.pos, hop = car.kind === 'motorboat' && nbrs(p.pos).includes(car.pos);
   if (!aboard && !hop) return INVALID_MOVE;
-  car.driver = ctx.currentPlayer; if (hop) p.pos = car.pos;   // step off the bank onto the moored motorboat
-  G.log.push(`P${ctx.currentPlayer} board ${car.kind}@${car.pos}`);
+  p.money -= BOARD_COST; car.driver = ctx.currentPlayer; if (hop) p.pos = car.pos;   // pay the fee, step off the bank onto the moored motorboat
+  G.log.push(`P${ctx.currentPlayer} board ${car.kind}@${car.pos} (-${BOARD_COST}$)`);
 };
 const leave: Move<GState> = ({ G, ctx }) => {   // step out (free): a car stays where it is; a motorboat docks you to an adjacent bank tile
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
@@ -667,7 +668,7 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
     for (const c of roadReach(G.map, myCar.pos, CAR_STEPS)) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
     return best >= 0 ? { move: 'drive', args: [best] } : { move: 'leave', args: [] };
   }
-  const vi = G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && v.kind === 'car');   // parked car underfoot → board if roads lead closer
+  const vi = p.money >= BOARD_COST ? G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && v.kind === 'car') : -1;   // parked car underfoot → board if roads lead closer (and the fee is affordable)
   if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
   return null;
 }
@@ -741,7 +742,7 @@ export const enumerate = (G: GState, ctx: any) => {
     nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });
     if (p.ap >= 1 && myCar) (myCar.kind === 'motorboat' ? riverReach(G.map, myCar.pos, MOTORBOAT_STEPS) : roadReach(G.map, myCar.pos, CAR_STEPS)).forEach(d => out.push({ move: 'drive', args: [d] }));
     if (p.ap >= 1 && p.boat) riverReach(G.map, p.pos, BOAT_STEPS).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
-    G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
+    if (p.money >= BOARD_COST) G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));   // discoveries are uncapped in hand
     if (isMarket(tile)) {   // buy a chosen gear kit / boat / car (selectable)
@@ -814,15 +815,15 @@ export const Expedition: Game<GState> = {
     const { map, start } = generateMap(seed, dim);
     const colorRand = prng((seed ^ 0x5bd1e995) >>> 0);   // deterministic per-match colour stream (independent of type)
     map[start].revealed = true;
-    const rv = map.findIndex(t => t.hotspot === 'riverVillage');   // 2 boats live at the river village: the portable canoe + a moored motorboat
-    map[rv >= 0 ? rv : start].equipment.push({ kind: 'boat' });    // canoe (boat #1)
-    const moor = rv >= 0 ? nbrs(rv).find(j => map[j] && map[j].terrain === 'water') : undefined;
+    const rv = map.findIndex(t => t.hotspot === 'riverVillage');   // the river village's fleet: 2 portable canoes + 2 moored motorboats
+    map[rv >= 0 ? rv : start].equipment.push({ kind: 'boat' }, { kind: 'boat' });   // 2 canoes
+    const water = rv >= 0 ? nbrs(rv).filter(j => map[j] && map[j].terrain === 'water') : [];   // river banks beside the village
     const village = map.findIndex(t => t.hotspot === 'village');   // a road market
     const vehicles: Vehicle[] = [
       { pos: start, driver: null, trunk: [], kind: 'car' as const },                          // 1 car at the research base
       { pos: village >= 0 ? village : start, driver: null, trunk: [], kind: 'car' as const },  // 1 car at a village (fallback: base)
     ];
-    if (moor !== undefined) vehicles.push({ pos: moor, driver: null, trunk: [], kind: 'motorboat' });   // motorboat (boat #2)
+    if (water.length) for (let k = 0; k < 2; k++) vehicles.push({ pos: water[k % water.length], driver: null, trunk: [], kind: 'motorboat' });   // 2 motorboats moored on the river
     const roleBag = [...ROLES]; { const rr = prng((seed ^ 0x2545f491) >>> 0); for (let i = roleBag.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [roleBag[i], roleBag[j]] = [roleBag[j], roleBag[i]]; } }   // specialist roles shuffled per match (not fixed by seat)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
