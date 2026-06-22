@@ -109,7 +109,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   const remoteT = G.map.findIndex(t => t.hotspot === 'remote');   // the two shared open pools (community cards): base lab + frontier research site
   const poolRow = (label: string, ds: typeof G.map[number]['cache']) =>
     `<div class="pcard"><span class="who">${label}</span> <span style="opacity:.7">${ds.length}</span> ${ds.length ? sampleChips(ds) : '<span style="opacity:.5">empty</span>'}</div>`;
-  $('pools').innerHTML = poolRow('🔬 Research base', G.map[G.base].cache) + (remoteT >= 0 ? poolRow('⛺ Frontier base', G.map[remoteT].cache) : '');
+  $('pools').innerHTML = poolRow('🏢 Research base', G.map[G.base].cache) + (remoteT >= 0 ? poolRow('⛺ Frontier base', G.map[remoteT].cache) : '');
 
   $('players').innerHTML = Object.entries(G.players).map(([id, p]) => {
     const c = id === ctx.currentPlayer ? 'pcard cur' : 'pcard';

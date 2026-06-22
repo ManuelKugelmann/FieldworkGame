@@ -32,7 +32,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // fixed 18×18 footprint, ~200 tiles kept active (rest void gaps) → built-out-from-network spread  // 4 AP/round
-  COLORS = 4, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8, TRUNK_SLOTS = 3, MOTORBOAT_STEPS = 4;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat covers per AP (faster than the portable canoe's BOAT_STEPS)  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // TRUNK_SLOTS = items a car can carry in its trunk  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8, TRUNK_SLOTS = 3, MOTORBOAT_STEPS = 4;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat covers per AP (faster than the portable canoe's BOAT_STEPS)  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // TRUNK_SLOTS = items a car can carry in its trunk  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
@@ -117,7 +117,7 @@ const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
   ruins:     { arch: 8, geo: 2, bot: 1, zoo: 1 },   // a dig site — archaeology dominates the stack
   water:     { zoo: 4, bot: 2, geo: 1, arch: 1 },   // aquatic life — fish/fauna heavy, some flora
 };
-export const BIOME_COLOR: Partial<Record<Terrain, number>> = { grassland: 0, jungle: 1, rocky: 2, ruins: 3, water: 1 };  // signature colour index per biome pool (0 red … 3 violet) — drives the pool's colour bias + catalogue-DC lean (water leans green like jungle)
+export const BIOME_COLOR: Partial<Record<Terrain, number>> = { jungle: 0, rocky: 1, ruins: 2, water: 1 };  // signature colour per biome pool (0 green · 1 blue · 2 yellow) — drives the colour bias + catalogue-DC lean. grassland omitted = MIXED (no lean); water leans blue like rocky
 // tile-event deck mixed into each terrain stack: a base weighting, with a per-terrain lean toward its signature hazard
 const EVENT_RATE = 0.12;            // ~ this fraction of a terrain stack is events (the rest are specimens)
 const BUSHTHIEF_TAKE = 3;           // $ a bushthief camp robs from the entering player
@@ -535,7 +535,7 @@ const unstash: Move<GState> = ({ G, ctx }, i = 0) => {   // i = index into the c
 // Poker grammar (discipline = rank, colour = suit) made CONCRETE: each project pins specific values, so two players can race the same question.
 // A project is a list of PARTS; each part needs `count` discoveries pinned by discipline and/or colour. Owned fill first; ≤MAX_CITE shortfall cites others' published. Discoveries used are CONSUMED into the publisher's pool.
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
-const COL_NAME = ['red', 'green', 'gold', 'violet'];   // the 4 colours (match DCOLOR in render)
+const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
 const POOL_SIZE = 8;   // open research questions on the board at once

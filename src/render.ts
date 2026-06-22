@@ -38,7 +38,7 @@ export function logToasts(fromIdx: number, log: string[]): Toast[] {
 
 export let CELL = 46;              // CSS px per tile — recomputed responsively in fitCanvas()
 export const MIN_CELL = 16;        // floor so the board stays usable on tiny viewports
-export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#b07aff'];
+export const PLAYER_COLOR = ['#ffd24a', '#4ad2ff', '#ff7a4a', '#5fdf6f'];   // gold · cyan · orange · green (no purple)
 const PAWN_DIAG = [[-1, -1], [1, -1], [-1, 1], [1, 1]];   // per-player off-centre diagonal: P0 TL · P1 TR · P2 BL · P3 BR
 const hash01 = (i: number, k: number) => { let h = (Math.imul(i + 1, 2654435761) ^ Math.imul(k + 1, 40503)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return ((h >>> 8) & 0xffff) / 0xffff; };   // deterministic per-tile jitter
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#ffc844', zoo: '#ff6f5c', bot: '#57e466', arch: '#bb9cff' };   // brighter, stronger discovery colours
@@ -47,7 +47,7 @@ const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo
 export const prettyFind = (d: Discovery) => `${DTYPE_SYMBOL[d.type]}${d.color}`;                     // e.g. 💎3
 const prettyTag = (tag: string) => { const m = tag.match(/^([a-z]+)(\d+)$/); return m && isDType(m[1]) ? DTYPE_SYMBOL[m[1]] + m[2] : tag; };   // "geo3" → "💎3"
 export const prettyLog = (line: string) => line.replace(/\b(geo|zoo|bot|arch)(\d)/g, (_m, t, c) => DTYPE_SYMBOL[t as Discovery['type']] + c);   // swap type words for icons in a log line
-const COL_SQUARE = ['🟥', '🟩', '🟨', '🟪'];   // the 4 discovery colours as squares (red green gold violet)
+const COL_SQUARE = ['🟩', '🟦', '🟨'];   // the 3 discovery colours as squares (green blue yellow)
 // compact iconic project label: e.g. "3 💎", "2 💎 + 2 🐾", "5 🟥" (no "of a kind" prose)
 export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ? DTYPE_SYMBOL[p.type] : ''}${p.color !== undefined ? COL_SQUARE[p.color] : ''}`).join(' + ');
 
@@ -66,7 +66,7 @@ const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_FILL = 'rgba(8,7,6,0.7)';   // cliff band — a dark in-tile marker covering ~1/3 of the affected tile side (no border line)
 const EQUIP_COLOR = '#cfd6c8';
-const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🔬', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // lab · frontier · village (market) · little river house
+const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🏢', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // research base (building) · frontier · village (market) · little river house
 const BIOME_ICON: Partial<Record<Tile['terrain'], string>> = { grassland: '🌾', jungle: '🌴', rocky: '🪨', ruins: '🏛️', water: '🌊' };   // small per-tile biome marker (corner)
 // discovery BACK-SIDE / pool colour — a brighter tint of the biome's tile colour (so the back reads as "from this biome")
 const BIOME_POOL: Partial<Record<Tile['terrain'], string>> = { grassland: '#b2c43f', jungle: '#2e8f74', rocky: '#b6b6c2', ruins: '#cbb46a', water: '#3f7593' };  // brighter biome tints (grass yellow-green · forest greenish-teal · rock silver · ruins beige-gold · water swampy blue)
@@ -187,7 +187,7 @@ export function maskedChips(ds: Discovery[]): string {
 
 // ---- publish planner: the shared pool of open research projects + how close the current player is ----
 // Each project pins concrete values; discipline = icon, colour = swatch (both for both-axes projects). evalGoal() (in game.ts) is the single source of truth.
-export const DCOLOR = ['#e0563a', '#36a85a', '#e0c23a', '#a86ae0'];   // the 4 discovery colours (swatches in the planner / chips)
+export const DCOLOR = ['#36a85a', '#3f86d8', '#e0c23a'];   // the 3 discovery colours: green · blue · yellow
 export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; swatch?: string; }   // have = carried · cite = fillable from others' published · need = missing
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; threat: 'imminent' | 'building' | 'hidden' | 'none'; }
 
@@ -246,11 +246,8 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
 function carGlyph(cctx: CanvasRenderingContext2D, x: number, y: number, driver: string | null, glyph = '🚗') {
   const fs = CELL * 0.36, cy = y + CELL * 0.82;          // hugging the bottom edge of the tile (clear of the centre discovery/pawn)
-  cctx.fillStyle = 'rgba(11,15,10,0.32)'; cctx.beginPath(); cctx.arc(x + CELL / 2, cy, fs * 0.62, 0, 7); cctx.fill();   // contrast disc so the boat/car reads on top of water + river links
   cctx.font = `${fs}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
-  cctx.globalAlpha = driver ? 1 : 0.82;                 // empty vehicle only slightly dimmer (still clearly visible)
   cctx.fillText(glyph, x + CELL / 2, cy);
-  cctx.globalAlpha = 1;
   if (driver) { cctx.fillStyle = driver; cctx.strokeStyle = '#0b0f0a'; cctx.lineWidth = 1; cctx.beginPath(); cctx.arc(x + CELL / 2 + fs * 0.5, cy - fs * 0.3, 2.6, 0, 7); cctx.fill(); cctx.stroke(); }
 }
 
@@ -291,15 +288,16 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     const t = G.map[i]; if (t.terrain !== 'water') continue;
     const c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL, cx = x + CELL / 2, cy = y + CELL / 2;
     const land = (j: number) => G.map[j] && G.map[j].terrain !== 'water' && G.map[j].terrain !== 'void';
-    const banks: [number, number][] = [];
-    if (!(t.rivers & 1) && r > 0 && land(i - G.cols)) banks.push([cx, y + CELL * 0.16]);
-    if (!(t.rivers & 2) && c < G.cols - 1 && land(i + 1)) banks.push([x + CELL * 0.84, cy]);
-    if (!(t.rivers & 4) && r < G.rows - 1 && land(i + G.cols)) banks.push([cx, y + CELL * 0.84]);
-    if (!(t.rivers & 8) && c > 0 && land(i - 1)) banks.push([x + CELL * 0.16, cy]);
+    const banks: [number, number, number][] = [];   // [x, y, axis] axis 0 = horizontal edge (spread along x), 1 = vertical edge (spread along y)
+    if (!(t.rivers & 1) && r > 0 && land(i - G.cols)) banks.push([cx, y + CELL * 0.08, 0]);
+    if (!(t.rivers & 2) && c < G.cols - 1 && land(i + 1)) banks.push([x + CELL * 0.92, cy, 1]);
+    if (!(t.rivers & 4) && r < G.rows - 1 && land(i + G.cols)) banks.push([cx, y + CELL * 0.92, 0]);
+    if (!(t.rivers & 8) && c > 0 && land(i - 1)) banks.push([x + CELL * 0.08, cy, 1]);
     let s = 0;
-    for (const [bx, by] of banks) for (let k = 0; k < 3; k++, s++) {
+    for (const [bx, by, axis] of banks) for (let k = 0; k < 6; k++, s++) {   // more dots, tighter to the edge
       cctx.fillStyle = s % 2 ? '#3a7a3a' : '#9ec24e';   // forest / grass green mix
-      cctx.beginPath(); cctx.arc(bx + (hash01(i, s * 2) - 0.5) * CELL * 0.42, by + (hash01(i, s * 2 + 1) - 0.5) * CELL * 0.42, Math.max(0.9, CELL * 0.03), 0, 7); cctx.fill();
+      const along = (hash01(i, s * 2) - 0.5) * CELL * 0.74, perp = (hash01(i, s * 2 + 1) - 0.5) * CELL * 0.12;
+      cctx.beginPath(); cctx.arc(bx + (axis ? perp : along), by + (axis ? along : perp), Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill();
     }
   }
 

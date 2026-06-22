@@ -29,6 +29,8 @@
       .research { flex: 0 1 13rem; min-width: 11rem; max-width: 14rem; display: flex; flex-direction: column; order: -1; }
       .research h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .4rem; }
       #plan { display: flex; flex-direction: column; gap: .35rem; }
+      .manual { margin-top: .8rem; font-size: .66rem; color: #88a888; line-height: 1.5; }
+      .manual h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #6f8f70; margin: 0 0 .35rem; }
       @media (max-width: 1023px) {   /* mobile: research band sits on top, laid out horizontally */
         .research { flex-basis: 100%; max-width: none; }
         #plan { flex-direction: row; flex-wrap: wrap; gap: .4rem; justify-content: center; }
@@ -80,7 +82,19 @@
   <body>
     <div id="toasts" class="toasts"></div>
     <div class="cols">
-      <div class="research"><h2 id="research-h">Research</h2><div id="plan"></div></div>
+      <div class="research"><h2 id="research-h">Research</h2><div id="plan"></div>
+        <div class="manual">
+          <h2>Manual</h2>
+          <div>🚶 move 1 AP on path/road · 2 AP off-path</div>
+          <div>🛶 canoe 1 AP (water+brooks) · 🚗 car 3 road/AP · 🛥 boat 4 river/AP</div>
+          <div>flip a find: 1 AP — roll 2d6 + gear ≥ DC</div>
+          <div>DC by colour: 🟩 6 · 🟦 7 · 🟨 8</div>
+          <div>📜 publish at a base: AP cost rises 1→4 (shared pool)</div>
+          <div>💎 geo · 🐾 zoo · 🌿 bot · 🏺 arch</div>
+          <div>🏢 base · ⛺ frontier (research) · 🏘️ 🏠 markets</div>
+          <div>gear 🔍 🔬 ⚗️ +1/+2/+3 · 🧪 field kit (1 discipline)</div>
+        </div>
+      </div>
       <div class="boardwrap">
         <canvas id="board"></canvas>
         <div class="panel inspectwrap"><div id="inspect">hover a tile</div></div>
