@@ -407,7 +407,7 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   if (free(village)) g[village].hotspot = 'village';              // road market, near the middle of the road
   if (free(byFar(allLand.filter(free))[0])) g[byFar(allLand.filter(free))[0]].hotspot = 'remote';   // farthest frontier — the wild 2nd research site (may be isolated → reach by boat)
   const fbs: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].bridge === 'foot' && free(i)) fbs.push(i);   // foot-bridge tiles (their crossing paths are laid just after — so reachable; reach can't see them yet)
-  if (fbs.length) g[fbs.sort((a, b) => dist(a, base) - dist(b, base))[0]].hotspot = 'riverVillage';   // riverside village sits ON the river at a foot crossing — home of the shared boat
+  fbs.sort((a, b) => dist(a, base) - dist(b, base)).slice(0, 2).forEach(i => g[i].hotspot = 'riverVillage');   // BOTH foot crossings become river villages — each sits ON the river, home of a canoe + motorboat
   return true;
 }
 function generateMap(seed: number, dim: number): { map: Tile[]; start: number } {
@@ -815,15 +815,14 @@ export const Expedition: Game<GState> = {
     const { map, start } = generateMap(seed, dim);
     const colorRand = prng((seed ^ 0x5bd1e995) >>> 0);   // deterministic per-match colour stream (independent of type)
     map[start].revealed = true;
-    const rv = map.findIndex(t => t.hotspot === 'riverVillage');   // the river village's fleet: 2 portable canoes + 2 moored motorboats
-    map[rv >= 0 ? rv : start].equipment.push({ kind: 'boat' }, { kind: 'boat' });   // 2 canoes
-    const water = rv >= 0 ? nbrs(rv).filter(j => map[j] && map[j].terrain === 'water') : [];   // river banks beside the village
     const village = map.findIndex(t => t.hotspot === 'village');   // a road market
     const vehicles: Vehicle[] = [
       { pos: start, driver: null, trunk: [], kind: 'car' as const },                          // 1 car at the research base
       { pos: village >= 0 ? village : start, driver: null, trunk: [], kind: 'car' as const },  // 1 car at a village (fallback: base)
     ];
-    if (water.length) for (let k = 0; k < 2; k++) vehicles.push({ pos: water[k % water.length], driver: null, trunk: [], kind: 'motorboat' });   // 2 motorboats moored on the river
+    const rvs: number[] = []; map.forEach((t, i) => { if (t.hotspot === 'riverVillage') rvs.push(i); });   // each river village starts with 1 canoe + 1 motorboat, both ON its (water) tile
+    if (rvs.length) for (const rvi of rvs) { map[rvi].equipment.push({ kind: 'boat' }); vehicles.push({ pos: rvi, driver: null, trunk: [], kind: 'motorboat' }); }
+    else map[start].equipment.push({ kind: 'boat' });   // fallback: a canoe at base if no river village exists
     const roleBag = [...ROLES]; { const rr = prng((seed ^ 0x2545f491) >>> 0); for (let i = roleBag.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [roleBag[i], roleBag[j]] = [roleBag[j], roleBag[i]]; } }   // specialist roles shuffled per match (not fixed by seat)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>

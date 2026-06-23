@@ -8,9 +8,11 @@ export type Action = { move?: string; args?: unknown[]; event?: string };
 
 // ---- toasts: classify fresh G.log lines into transient success/fail/info notices ----
 export interface Toast { text: string; kind: 'good' | 'bad' | 'info'; }
+// money is shown inflated ×10 and denoted "k$" (flavour — bigger numbers); the underlying economy is unchanged
+export const money$ = (n: number) => `${n * 10}k$`;
 // concise explanation of each global (whole-round, all-players) event — used for the status line AND the toast
 export const EVENT_LABEL: Record<string, string> = {
-  tailwind: '🌬️ Tailwind · +1 AP for all', cache: '💰 Cache · +2$ for all', grant: '🎓 Grant · +3$ for all', calm: '☀️ Calm · nothing stirs',
+  tailwind: '🌬️ Tailwind · +1 AP for all', cache: `💰 Cache · +${money$(2)} for all`, grant: `🎓 Grant · +${money$(3)} for all`, calm: '☀️ Calm · nothing stirs',
   rockslide: '⛏ Rockslide · a jungle tile turns rocky', washout: '🌊 Washout · a crossing severed', monsoon: '⛈ Monsoon · field season nearing its end',
 };
 export function classifyLog(line: string): Toast | null {
@@ -24,7 +26,7 @@ export function classifyLog(line: string): Toast | null {
     if (res === 'destroyed') return { text: `${prettyTag(tag)} destroyed · −1 AP`, kind: 'bad' };
     return null;
   }
-  if (line.startsWith('publish ')) { const m = line.match(/(\+\d+P)/); return { text: `Published${m ? ` ${m[1]}` : ''} · −1 AP`, kind: 'good' }; }
+  if (line.startsWith('publish ')) { const m = line.match(/\+(\d+)P/); return { text: `Published${m ? ` +${m[1]}🎓` : ''} · −1 AP`, kind: 'good' }; }
   if (line.startsWith('buy gear')) return { text: 'Bought gear', kind: 'info' };
   if (line.startsWith('drive')) return { text: 'Drove · −1 AP', kind: 'info' };
   if (line.startsWith('helilift')) return { text: 'Helilift → base · −1 AP', kind: 'info' };
@@ -133,10 +135,10 @@ export function spatialTargets(actions: Action[], G: GState, pid: string): Map<n
 // label for a non-spatial action button (move/drive are board clicks -> null)
 export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: PlayerS, car?: Vehicle): string | null {
   if (a.move === 'catalogue') { const d = tile.finds[a.args![0] as number]; return d ? `Catalogue ${prettyFind(d)} · 🎲≥${catDC(d.color)}` : null; }
-  if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${goalLabel(g)} (+${g.prestige}P)` : 'Publish'; }
+  if (a.move === 'publish') { const g = goals?.find(x => x.id === a.args![0]); return g ? `Publish ${goalLabel(g)} (+${g.prestige}🎓)` : 'Publish'; }
   if (a.move === 'buy') { const k = a.args![0] as string, f = a.args![1] as Discovery['type'] | undefined;
-    if (k === 'boat') return 'Buy boat (−5$)'; if (k === 'car') return 'Buy car (−8$)';
-    return k === 'field' ? `Buy 🧪${DTYPE_SYMBOL[f!]} (−${GEAR_PRICE.field}$)` : `Buy ${GEAR_GLYPH[k]}+${k[1]} (−${GEAR_PRICE[k as GearItem['kind']]}$)`; }
+    if (k === 'boat') return `Buy boat (−${money$(5)})`; if (k === 'car') return `Buy car (−${money$(8)})`;
+    return k === 'field' ? `Buy 🔬${DTYPE_SYMBOL[f!]} (−${money$(GEAR_PRICE.field)})` : `Buy ${GEAR_GLYPH[k]}+${k[1]} (−${money$(GEAR_PRICE[k as GearItem['kind']])})`; }
   if (a.move === 'board') return 'Board';
   if (a.move === 'leave') return 'Leave';
   if (a.move === 'drop') { const s = a.args![0]; return s === 'boat' ? 'Drop boat' : `Drop ${p ? gearIcon(p.gear[s as number]) : 'gear'}`; }
@@ -144,7 +146,7 @@ export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: Player
     return !e || e.kind === 'boat' ? 'Pick up boat' : `Pick up ${gearIcon(e.gear!)}`; }
   if (a.move === 'stash') { const s = a.args![0]; return s === 'boat' ? 'Stash boat → trunk' : `Stash ${p ? gearIcon(p.gear[s as number]) : 'gear'} → trunk`; }
   if (a.move === 'unstash') { const e = car?.trunk[a.args![0] as number]; return e ? `Take ${e.kind === 'boat' ? 'boat' : gearIcon(e.gear!)} ← trunk` : 'Take ← trunk'; }
-  if (a.move === 'helilift') return 'Helilift → base (−12$)';
+  if (a.move === 'helilift') return `Helilift → base (−${money$(12)})`;
   if (a.move === 'reclaim') { const d = tile.cache[a.args![0] as number]; return d ? `Take ${prettyFind(d)}` : null; }
   if (a.move === 'discard') return null;   // dropping is done by clicking your own hand chip
   if (a.event === 'endTurn') return 'End turn';
@@ -226,7 +228,7 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
       if (er.ok) { threat = 'imminent'; break; }
       if (er.slots.filter(s => s.state === 'have').length >= Math.ceil(need * 0.6)) threat = 'building';
     }
-    return { name: goal.id, label: goalLabel(goal), reward: `+${goal.prestige}P +${goal.money}$`, cells, ready: r.ok, threat };
+    return { name: goal.id, label: goalLabel(goal), reward: `+${goal.prestige}🎓 +${money$(goal.money)}`, cells, ready: r.ok, threat };
   });
 }
 
