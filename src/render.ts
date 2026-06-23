@@ -257,7 +257,8 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
   const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];   // clockwise from top-left
   const normals = [[0, 1], [-1, 0], [0, -1], [1, 0]];          // inward normal for top / right / bottom / left edge
   const jseed = a * 131 + (east ? 17 : 53); let h = 0;
-  cctx.fillStyle = CLIFF_FILL; cctx.beginPath(); cctx.moveTo(corners[0][0], corners[0][1]);
+  const waterfall = G.map[a].terrain === 'water' && G.map[b].terrain === 'water';   // a cliff across the river renders as white foam
+  cctx.fillStyle = waterfall ? 'rgba(225,240,250,0.6)' : CLIFF_FILL; cctx.beginPath(); cctx.moveTo(corners[0][0], corners[0][1]);
   for (let e = 0; e < 4; e++) {
     const [sx, sy] = corners[e], [ex, ey] = corners[(e + 1) % 4], [nx, ny] = normals[e];
     for (let k = 1; k <= segs; k++) {
@@ -267,7 +268,7 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
   }
   cctx.closePath(); cctx.fill();
   const bx = east ? inner : x, by = east ? y : inner, bw = east ? third : CELL, bh = east ? CELL : third;
-  const seed = a * 13 + (east ? 3 : 7), dots = ['#5a9e4a', '#2f6f2f', '#9a9aa2', '#5a9e4a', '#74747c', '#2f6f2f'];   // green moss + some grey rock specks on the cliff band (matching rocky tiles)
+  const seed = a * 13 + (east ? 3 : 7), dots = waterfall ? ['#ffffff', '#cfe6f2', '#ffffff', '#bfe0f0', '#ffffff', '#cfe6f2'] : ['#5a9e4a', '#2f6f2f', '#9a9aa2', '#5a9e4a', '#74747c', '#2f6f2f'];   // waterfall = white foam specks; cliff = green moss + grey rock
   for (let k = 0; k < 6; k++) { cctx.fillStyle = dots[k % dots.length]; cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill(); }
 }
 

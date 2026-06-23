@@ -229,7 +229,7 @@ function genOnce(seed: number) {
   const ctr = (ctrPool.length ? ctrPool : centralRow.length ? centralRow : river).slice().sort((a, b) => dc(a) - dc(b))[0];   // on the TRUNK, a straight road crossing where possible
   g[ctr].bridge = 'road'; const bridges = [ctr];
   const cand = allRiver.filter(i => i !== ctr && straightAny(i));  // foot crossings also on STRAIGHT river tiles (perpendicular land both sides)
-  for (let k = 0; k < 2 && cand.length; k++) { const i = cand.splice(Math.floor(rand() * cand.length), 1)[0]; g[i].bridge = 'foot'; bridges.push(i); }
+  for (let k = 0; k < 4 && cand.length; k++) { const i = cand.splice(Math.floor(rand() * cand.length), 1)[0]; g[i].bridge = 'foot'; bridges.push(i); }   // 4 foot crossings: the nearest 2 become river villages, the other 2 are plain footbridges
 
   // roads: built OUTWARD from the central bridge (overlay on a land base grass/wild/rock); a road cell = one carrying a road edge
   const roadBase = (): Terrain => (['grassland', 'jungle', 'rocky'] as Terrain[])[Math.floor(rand() * 3)];
@@ -295,6 +295,12 @@ function genOnce(seed: number) {
     const cand = nbrs(i).filter(j => isLand(j) && !(g[i].roads & dirBit(i, j)) && !(g[i].blocked & dirBit(i, j)));
     const k = 1 + (rand() < 0.5 ? 0 : 1);
     for (let n2 = 0; n2 < k && cand.length; n2++) block(i, cand.splice(Math.floor(rand() * cand.length), 1)[0]);
+  }
+  // exactly ONE WATERFALL: a single cliff edge crossing the river channel (blocks boats past it)
+  { const wf: [number, number][] = [];
+    for (let i = 0; i < N * N; i++) if (g[i].terrain === 'water' && !g[i].bridge)
+      for (const j of [i + 1, i + N]) if (j < N * N && g[j] && g[j].terrain === 'water' && !g[j].bridge && (g[i].rivers & dirBit(i, j))) wf.push([i, j]);
+    if (wf.length) { const [wa, wb] = wf[Math.floor(rand() * wf.length)]; block(wa, wb); }
   }
   // BUILD OUT from the road + river network: keep the land hugging it (1-cell margin → no bare roads/rivers), then grow outward up to ACTIVE_TILES; void the rest
   const passable = (a: number, b: number) => {                          // land/bridge connectivity; open water blocks (banks reached as seeds, not crossed)

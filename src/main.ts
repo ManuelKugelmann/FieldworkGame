@@ -3,7 +3,7 @@ import { Expedition, botAction, enumerate, publishCost, GEAR_MAX, MONSOON_END } 
 import type { GState } from './game';
 import {
   playerColor, EVENT_LABEL, money$, drawBoard, fitCanvas, tileAt, spatialTargets,
-  actionLabel, describeTile, sampleChips, maskedChips, gearChips, roleBonusChip, emptySlots, logToasts, prettyLog, publishPreviews, roleBadge,
+  actionLabel, sampleChips, maskedChips, gearChips, roleBonusChip, emptySlots, logToasts, prettyLog, publishPreviews, roleBadge,
   type Action, type Toast,
 } from './render';
 
@@ -171,9 +171,8 @@ canvas.addEventListener('mousemove', e => {
   const rect = canvas.getBoundingClientRect();
   const i = tileAt(e.clientX - rect.left, e.clientY - rect.top, s.G);
   if (i !== hover) { hover = i; draw(); }
-  $('inspect').innerHTML = i < 0 ? 'hover a tile' : describeTile(s.G, i);
 });
-canvas.addEventListener('mouseleave', () => { if (hover !== -1) { hover = -1; draw(); } $('inspect').textContent = 'hover a tile'; });
+canvas.addEventListener('mouseleave', () => { if (hover !== -1) { hover = -1; draw(); } });
 canvas.addEventListener('click', e => {
   const s = client.getState(); if (!s || s.ctx.gameover || !human.has(s.ctx.currentPlayer)) return;
   const rect = canvas.getBoundingClientRect();
