@@ -251,16 +251,19 @@ function linkLayer(cctx: CanvasRenderingContext2D, G: GState, mask: (t: Tile) =>
 // cliff: a dark band covering ~1/3 of tile `a` on the affected side (toward `b` = a+1 East or a+cols South) — no border line
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
   const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34, east = b === a + 1;
-  const jag = CELL * 0.08, segs = 7, inner = east ? x + CELL - third : y + CELL - third;
-  cctx.fillStyle = CLIFF_FILL; cctx.beginPath();   // band jagged on BOTH long edges — toward the tile centre AND toward the tile edge (border)
-  if (east) {
-    cctx.moveTo(x + CELL, y);
-    for (let k = 1; k <= segs; k++) cctx.lineTo(x + CELL - (k % 2 ? jag : 0), y + (k / segs) * CELL);    // jagged outer (border) edge ↓
-    for (let k = 0; k <= segs; k++) cctx.lineTo(inner + (k % 2 ? jag : 0), y + CELL - (k / segs) * CELL); // jagged inner edge ↑
-  } else {
-    cctx.moveTo(x, y + CELL);
-    for (let k = 1; k <= segs; k++) cctx.lineTo(x + (k / segs) * CELL, y + CELL - (k % 2 ? jag : 0));    // jagged outer (border) edge →
-    for (let k = 0; k <= segs; k++) cctx.lineTo(x + CELL - (k / segs) * CELL, inner + (k % 2 ? jag : 0)); // jagged inner edge ←
+  const jag = CELL * 0.07, segs = 5, inner = east ? x + CELL - third : y + CELL - third;
+  // band as a jagged polygon on ALL FOUR sides, with irregular (hashed) spike depths
+  const x0 = east ? inner : x, y0 = east ? y : inner, x1 = x + CELL, y1 = y + CELL;
+  const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];   // clockwise from top-left
+  const normals = [[0, 1], [-1, 0], [0, -1], [1, 0]];          // inward normal for top / right / bottom / left edge
+  const jseed = a * 131 + (east ? 17 : 53); let h = 0;
+  cctx.fillStyle = CLIFF_FILL; cctx.beginPath(); cctx.moveTo(corners[0][0], corners[0][1]);
+  for (let e = 0; e < 4; e++) {
+    const [sx, sy] = corners[e], [ex, ey] = corners[(e + 1) % 4], [nx, ny] = normals[e];
+    for (let k = 1; k <= segs; k++) {
+      const tt = k / segs, d = k === segs ? 0 : (0.2 + 0.8 * hash01(jseed, h++)) * jag;   // corners stay put; interior vertices jut inward irregularly
+      cctx.lineTo(sx + (ex - sx) * tt + nx * d, sy + (ey - sy) * tt + ny * d);
+    }
   }
   cctx.closePath(); cctx.fill();
   const bx = east ? inner : x, by = east ? y : inner, bw = east ? third : CELL, bh = east ? CELL : third;
