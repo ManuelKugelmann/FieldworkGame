@@ -264,9 +264,8 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
   }
   cctx.closePath(); cctx.fill();
   const bx = east ? inner : x, by = east ? y : inner, bw = east ? third : CELL, bh = east ? CELL : third;
-  cctx.fillStyle = 'rgba(168,168,176,0.6)';   // rock-grey scree dots on the cliff side
-  const seed = a * 13 + (east ? 3 : 7);
-  for (let k = 0; k < 6; k++) { cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.7, CELL * 0.026), 0, 7); cctx.fill(); }
+  const seed = a * 13 + (east ? 3 : 7), greens = ['#5a9e4a', '#2f6f2f'];   // green moss specks on the cliff band (matching rocky tiles)
+  for (let k = 0; k < 6; k++) { cctx.fillStyle = greens[k % 2]; cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill(); }
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
