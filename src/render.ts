@@ -250,9 +250,16 @@ function linkLayer(cctx: CanvasRenderingContext2D, G: GState, mask: (t: Tile) =>
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
   const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34, east = b === a + 1;
   const jag = CELL * 0.08, segs = 7, inner = east ? x + CELL - third : y + CELL - third;
-  cctx.fillStyle = CLIFF_FILL; cctx.beginPath();   // band with a JAGGED inner edge (rocky)
-  if (east) { cctx.moveTo(x + CELL, y); cctx.lineTo(x + CELL, y + CELL); for (let k = 0; k <= segs; k++) cctx.lineTo(inner + (k % 2 ? jag : 0), y + CELL - (k / segs) * CELL); }
-  else { cctx.moveTo(x, y + CELL); cctx.lineTo(x + CELL, y + CELL); for (let k = 0; k <= segs; k++) cctx.lineTo(x + CELL - (k / segs) * CELL, inner + (k % 2 ? jag : 0)); }
+  cctx.fillStyle = CLIFF_FILL; cctx.beginPath();   // band jagged on BOTH long edges — toward the tile centre AND toward the tile edge (border)
+  if (east) {
+    cctx.moveTo(x + CELL, y);
+    for (let k = 1; k <= segs; k++) cctx.lineTo(x + CELL - (k % 2 ? jag : 0), y + (k / segs) * CELL);    // jagged outer (border) edge ↓
+    for (let k = 0; k <= segs; k++) cctx.lineTo(inner + (k % 2 ? jag : 0), y + CELL - (k / segs) * CELL); // jagged inner edge ↑
+  } else {
+    cctx.moveTo(x, y + CELL);
+    for (let k = 1; k <= segs; k++) cctx.lineTo(x + (k / segs) * CELL, y + CELL - (k % 2 ? jag : 0));    // jagged outer (border) edge →
+    for (let k = 0; k <= segs; k++) cctx.lineTo(x + CELL - (k / segs) * CELL, inner + (k % 2 ? jag : 0)); // jagged inner edge ←
+  }
   cctx.closePath(); cctx.fill();
   const bx = east ? inner : x, by = east ? y : inner, bw = east ? third : CELL, bh = east ? CELL : third;
   cctx.fillStyle = 'rgba(168,168,176,0.6)';   // rock-grey scree dots on the cliff side
