@@ -328,12 +328,15 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     }
   }
 
-  // green lichen/moss specks scattered across rocky tiles
+  // green moss specks on rocky tiles — same small two-tone dots as the biome fringe, but spread over the WHOLE tile
+  const ROCK_GREEN = ['#5a9e4a', '#2f6f2f'];
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i]; if (t.terrain !== 'rocky' || t.bridge) continue;
     const c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
-    cctx.fillStyle = 'rgba(90,158,74,0.72)';
-    for (let k = 0; k < 4; k++) { cctx.beginPath(); cctx.arc(x + (0.18 + 0.64 * hash01(i, k * 2 + 11)) * CELL, y + (0.18 + 0.64 * hash01(i, k * 2 + 12)) * CELL, Math.max(0.7, CELL * 0.03), 0, 7); cctx.fill(); }
+    for (let k = 0; k < 8; k++) {
+      cctx.fillStyle = ROCK_GREEN[k % 2];
+      cctx.beginPath(); cctx.arc(x + (0.1 + 0.8 * hash01(i, k * 2 + 11)) * CELL, y + (0.1 + 0.8 * hash01(i, k * 2 + 12)) * CELL, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill();
+    }
   }
 
   // 3) hotspots, discovery slots (find dots), dropped equipment
