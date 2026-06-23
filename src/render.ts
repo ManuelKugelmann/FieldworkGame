@@ -251,25 +251,22 @@ function linkLayer(cctx: CanvasRenderingContext2D, G: GState, mask: (t: Tile) =>
 // cliff: a dark band covering ~1/3 of tile `a` on the affected side (toward `b` = a+1 East or a+cols South) — no border line
 function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GState) {
   const x = (a % G.cols) * CELL, y = ((a / G.cols) | 0) * CELL, third = CELL * 0.34, east = b === a + 1;
-  const jag = CELL * 0.07, segs = 5, inner = east ? x + CELL - third : y + CELL - third;
-  // band as a jagged polygon on ALL FOUR sides, with irregular (hashed) spike depths
-  const x0 = east ? inner : x, y0 = east ? y : inner, x1 = x + CELL, y1 = y + CELL;
-  const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];   // clockwise from top-left
-  const normals = [[0, 1], [-1, 0], [0, -1], [1, 0]];          // inward normal for top / right / bottom / left edge
-  const jseed = a * 131 + (east ? 17 : 53); let h = 0;
+  const x1 = x + CELL, y1 = y + CELL, segs = 9, jag = CELL * 0.1;
+  // tapered, jagged band: an outer edge along the border + an inner edge that narrows toward both ends
+  const P0 = east ? [x1, y] : [x, y1], P1 = [x1, y1], n = east ? [-1, 0] : [0, -1];   // border line P0→P1; n = inward (into tile a)
+  const lerp = (t: number, i: number) => P0[i] + (P1[i] - P0[i]) * t;
+  const taper = (t: number) => 0.2 + 0.8 * Math.sin(Math.PI * t);   // band narrows toward its ends, full in the middle
+  const seed = a * 131 + (east ? 17 : 53); let h = 0;
   const waterfall = G.map[a].terrain === 'water' && G.map[b].terrain === 'water';   // a cliff across the river renders as white foam
-  cctx.fillStyle = waterfall ? 'rgba(225,240,250,0.6)' : CLIFF_FILL; cctx.beginPath(); cctx.moveTo(corners[0][0], corners[0][1]);
-  for (let e = 0; e < 4; e++) {
-    const [sx, sy] = corners[e], [ex, ey] = corners[(e + 1) % 4], [nx, ny] = normals[e];
-    for (let k = 1; k <= segs; k++) {
-      const tt = k / segs, d = k === segs ? 0 : (0.2 + 0.8 * hash01(jseed, h++)) * jag;   // corners stay put; interior vertices jut inward irregularly
-      cctx.lineTo(sx + (ex - sx) * tt + nx * d, sy + (ey - sy) * tt + ny * d);
-    }
-  }
+  cctx.fillStyle = waterfall ? 'rgba(225,240,250,0.6)' : CLIFF_FILL; cctx.beginPath();
+  for (let k = 0; k <= segs; k++) { const t = k / segs, e = (k === 0 || k === segs) ? 0 : hash01(seed, h++) * jag * 0.5;   // outer edge along the border, lightly jagged
+    const px = lerp(t, 0) + n[0] * e, py = lerp(t, 1) + n[1] * e; k ? cctx.lineTo(px, py) : cctx.moveTo(px, py); }
+  for (let k = segs; k >= 0; k--) { const t = k / segs, w = Math.max(0, third * taper(t) + ((k === 0 || k === segs) ? 0 : (hash01(seed, h++) - 0.5) * jag * 1.4));   // inner edge: tapered + strongly jagged
+    cctx.lineTo(lerp(t, 0) + n[0] * w, lerp(t, 1) + n[1] * w); }
   cctx.closePath(); cctx.fill();
-  const bx = east ? inner : x, by = east ? y : inner, bw = east ? third : CELL, bh = east ? CELL : third;
-  const seed = a * 13 + (east ? 3 : 7), dots = waterfall ? ['#ffffff', '#cfe6f2', '#ffffff', '#bfe0f0', '#ffffff', '#cfe6f2'] : ['#5a9e4a', '#2f6f2f', '#9a9aa2', '#5a9e4a', '#74747c', '#2f6f2f'];   // waterfall = white foam specks; cliff = green moss + grey rock
-  for (let k = 0; k < 6; k++) { cctx.fillStyle = dots[k % dots.length]; cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill(); }
+  const bx = east ? x1 - third : x, by = east ? y : y1 - third, bw = east ? third : CELL, bh = east ? CELL : third;
+  const seed2 = a * 13 + (east ? 3 : 7), dots = waterfall ? ['#ffffff', '#cfe6f2', '#ffffff', '#bfe0f0', '#ffffff', '#cfe6f2'] : ['#5a9e4a', '#2f6f2f', '#9a9aa2', '#5a9e4a', '#74747c', '#2f6f2f'];   // waterfall = white foam specks; cliff = green moss + grey rock
+  for (let k = 0; k < 6; k++) { cctx.fillStyle = dots[k % dots.length]; cctx.beginPath(); cctx.arc(bx + hash01(seed2, k * 2) * bw, by + hash01(seed2, k * 2 + 1) * bh, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill(); }
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
@@ -334,7 +331,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   // green moss specks on rocky tiles — same small two-tone dots as the biome fringe, but spread over the WHOLE tile
   const ROCK_DOTS = ['#5a9e4a', '#2f6f2f', '#9a9aa2', '#5a9e4a', '#74747c', '#2f6f2f'];   // mostly green moss with some grey rock specks
   for (let i = 0; i < G.map.length; i++) {
-    const t = G.map[i]; if (t.terrain !== 'rocky' || t.bridge) continue;
+    const t = G.map[i]; if ((t.terrain !== 'rocky' && t.terrain !== 'ruins') || t.bridge) continue;
     const c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
     for (let k = 0; k < 8; k++) {
       cctx.fillStyle = ROCK_DOTS[k % ROCK_DOTS.length];
