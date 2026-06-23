@@ -267,8 +267,8 @@ function borderBar(cctx: CanvasRenderingContext2D, a: number, b: number, G: GSta
   }
   cctx.closePath(); cctx.fill();
   const bx = east ? inner : x, by = east ? y : inner, bw = east ? third : CELL, bh = east ? CELL : third;
-  const seed = a * 13 + (east ? 3 : 7), greens = ['#5a9e4a', '#2f6f2f'];   // green moss specks on the cliff band (matching rocky tiles)
-  for (let k = 0; k < 6; k++) { cctx.fillStyle = greens[k % 2]; cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill(); }
+  const seed = a * 13 + (east ? 3 : 7), dots = ['#5a9e4a', '#2f6f2f', '#9a9aa2', '#5a9e4a', '#74747c', '#2f6f2f'];   // green moss + some grey rock specks on the cliff band (matching rocky tiles)
+  for (let k = 0; k < 6; k++) { cctx.fillStyle = dots[k % dots.length]; cctx.beginPath(); cctx.arc(bx + hash01(seed, k * 2) * bw, by + hash01(seed, k * 2 + 1) * bh, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill(); }
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
@@ -331,12 +331,12 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   }
 
   // green moss specks on rocky tiles — same small two-tone dots as the biome fringe, but spread over the WHOLE tile
-  const ROCK_GREEN = ['#5a9e4a', '#2f6f2f'];
+  const ROCK_DOTS = ['#5a9e4a', '#2f6f2f', '#9a9aa2', '#5a9e4a', '#74747c', '#2f6f2f'];   // mostly green moss with some grey rock specks
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i]; if (t.terrain !== 'rocky' || t.bridge) continue;
     const c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
     for (let k = 0; k < 8; k++) {
-      cctx.fillStyle = ROCK_GREEN[k % 2];
+      cctx.fillStyle = ROCK_DOTS[k % ROCK_DOTS.length];
       cctx.beginPath(); cctx.arc(x + (0.1 + 0.8 * hash01(i, k * 2 + 11)) * CELL, y + (0.1 + 0.8 * hash01(i, k * 2 + 12)) * CELL, Math.max(0.6, CELL * 0.02), 0, 7); cctx.fill();
     }
   }
@@ -346,7 +346,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   for (let i = 0; i < G.map.length; i++) {
     const t = G.map[i], c = i % G.cols, r = (i / G.cols) | 0, x = c * CELL, y = r * CELL;
     if (t.hotspot) {
-      cctx.fillStyle = 'rgba(11,15,10,0.72)'; cctx.beginPath(); cctx.arc(x + CELL / 2, y + CELL / 2, CELL * 0.31, 0, 7); cctx.fill();   // dark token disc frames the icon for contrast on any terrain
+      cctx.fillStyle = 'rgba(92,70,45,0.85)'; cctx.beginPath(); cctx.arc(x + CELL / 2, y + CELL / 2, CELL * 0.31, 0, 7); cctx.fill();   // street-brown token disc frames the location icon for contrast on any terrain
       cctx.font = `${CELL * 0.36}px ${EMOJI_FONT}`; cctx.textAlign = 'center'; cctx.textBaseline = 'middle';
       cctx.fillText(HOTSPOT_LABEL[t.hotspot], x + CELL / 2, y + CELL / 2 + 1);
     }

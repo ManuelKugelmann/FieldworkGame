@@ -333,6 +333,10 @@ function genOnce(seed: number) {
     const cand: number[] = []; for (let i = 0; i < N * N; i++) if (g[i].terrain === 'jungle' && g[i].roads === 0 && !g[i].bridge) cand.push(i);
     while (rn < RUINS_N && cand.length) { set(cand.splice(Math.floor(rand() * cand.length), 1)[0], 'ruins'); rn++; } }
   placeHotspots(g, base);   // within the kept area; before footpaths so the remote base seeds trails
+  for (let i = 0; i < N * N; i++) if (g[i].hotspot && g[i].blocked) {   // no cliffs on location tiles — clear any cliff edges on a hotspot (and the reciprocal edge on neighbours)
+    for (const j of nbrs(i)) g[j].blocked &= ~dirBit(j, i);
+    g[i].blocked = 0;
+  }
 
   // FOOTPATH JUNCTIONS: trails seed from foot bridges, anywhere on the roads, and every special location; they fizzle out in the jungle
   const footBr = bridges.filter(b => g[b].bridge === 'foot');
