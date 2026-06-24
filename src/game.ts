@@ -37,7 +37,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/turn; in round 1 only it ramps UP by play order (start player least) to offset first-mover advantage
-  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, MOTORBOAT_STEPS = 2;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat ("boat") covers per AP  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
@@ -58,7 +58,6 @@ const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, ruins
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const isLandT = (t: Tile) => t.terrain !== 'water' && t.terrain !== 'void';  // any walkable land terrain
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
-const grass = (map: Tile[], a: number, b: number) => map[a].terrain === 'grassland' || map[b].terrain === 'grassland';  // grassland = fast going (path-like)
 const dirBit = (a: number, b: number) => b === a - N ? 1 : b === a + N ? 4 : b === a + 1 ? 2 : 8;  // N1 E2 S4 W8
 // every link type (roads / footpaths / brooks / cliffs / river channel) is one edge bitmask on the tile; the only difference is which mask + tile prerequisite a mover reads
 type EdgeKind = 'roads' | 'paths' | 'smallRivers' | 'blocked' | 'rivers';
@@ -73,14 +72,14 @@ const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph
   if (plainRiver(map[a]) || plainRiver(map[b])) return false;      // open water — boat only (no foot-ford)
   return true;                                                     // land↔land / land↔brook (no rocky exit constraint)
 };
-const cost = (map: Tile[], a: number, b: number) => (onPath(map, a, b) || grass(map, a, b)) ? 1 : 2;  // road/foot edge OR grassland = 1 AP; bushwhack/ford = 2 (brook discount is boat-only)
+const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 0.5 : 1;  // path/road edge = 0.5 AP; any other (regular) tile = 1 AP
 const canBoat = (map: Tile[], a: number, b: number) => {           // BOAT graph (player carrying the boat): water + brooks, and still walks dry land
   if (onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b])) return false;
   if (map[a].bridge || map[b].bridge) return onPath(map, a, b);
   return true;                                                     // land↔land, land↔water, water↔water
 };
-const boatCost = (map: Tile[], a: number, b: number) =>             // water / brook / path / grassland step = 1 AP; portaging the boat over rough dry land = 2
-  (plainRiver(map[a]) || plainRiver(map[b]) || onPath(map, a, b) || grass(map, a, b) || (map[a].smallRivers & dirBit(a, b))) ? 1 : 2;
+const boatCost = (map: Tile[], a: number, b: number) =>             // by canoe: river/brook tile = 0.25 AP; otherwise foot cost (0.5 path / 1 regular)
+  (plainRiver(map[a]) || plainRiver(map[b]) || (map[a].smallRivers & dirBit(a, b))) ? 0.25 : (onPath(map, a, b) ? 0.5 : 1);
 export const apCost = (G: GState, from: number, to: number, boat: boolean) => (boat ? boatCost : cost)(G.map, from, to);  // AP for a foot/boat step (UI cost hint)
 // ---- generic link traversal: a vehicle rides ONE edge kind up to N steps/AP. roads→car, river channel→boat — same code, different `k`. ----
 function linkReach(map: Tile[], from: number, maxSteps: number, k: EdgeKind): number[] {   // cells within maxSteps along link `k`
@@ -482,9 +481,11 @@ const move: Move<GState> = ({ G, ctx, random }, t: number) => {
 // generic link-ride: travel up to `steps` tiles along link `k` for 1 AP. car→roads, boat→river channel — same code, different prerequisite.
 function ride(G: GState, ctx: any, random: any, dest: number, from: number, steps: number, k: EdgeKind, allowed: boolean, arrive: () => void, log: string) {
   const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || p.ap < 1 || !allowed || !linkReach(G.map, from, steps, k).includes(dest)) return INVALID_MOVE;
-  p.ap -= 1; p.pos = dest; arrive(); reveal(G, dest, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
-  G.log.push(log);
+  const reach = Math.floor(p.ap * steps);   // tiles affordable with current AP (1/steps AP per tile)
+  if (G.epilogue || p.ap <= 0 || !allowed || !linkReach(G.map, from, reach, k).includes(dest)) return INVALID_MOVE;
+  const d = linkDist(G.map, from, dest, k); p.ap -= d / steps;
+  p.pos = dest; arrive(); reveal(G, dest, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
+  G.log.push(`${log} (-${d / steps}ap)`);
 }
 const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // drive the boarded vehicle: a car along roads (CAR_STEPS), a motorboat along the large river (MOTORBOAT_STEPS) — player + vehicle travel together
   const v = myVehicle(G, ctx.currentPlayer); if (!v) return INVALID_MOVE;
@@ -493,7 +494,7 @@ const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // drive t
 };
 const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boat: up to BOAT_STEPS river-channel tiles per AP
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
-  return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `Player ${+ctx.currentPlayer + 1} 🛶→ ${dest} (-1ap)`);
+  return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `Player ${+ctx.currentPlayer + 1} 🛶→ ${dest}`);
 };
 const BOARD_COST = 1;   // money to climb into a vehicle (a small hire fee)
 const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into an unoccupied vehicle (costs BOARD_COST$): a car you're stood on, or a motorboat moored on an adjacent river tile (hop aboard from the bank)
@@ -729,8 +730,8 @@ export const enumerate = (G: GState, ctx: any) => {
   if (!G.epilogue) {                                                  // field season
     const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
     nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });
-    if (p.ap >= 1 && myCar) (myCar.kind === 'motorboat' ? riverReach(G.map, myCar.pos, MOTORBOAT_STEPS) : roadReach(G.map, myCar.pos, CAR_STEPS)).forEach(d => out.push({ move: 'drive', args: [d] }));
-    if (p.ap >= 1 && p.boat) riverReach(G.map, p.pos, BOAT_STEPS).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
+    if (p.ap > 0 && myCar) (myCar.kind === 'motorboat' ? riverReach(G.map, myCar.pos, Math.floor(p.ap * MOTORBOAT_STEPS)) : roadReach(G.map, myCar.pos, Math.floor(p.ap * CAR_STEPS))).forEach(d => out.push({ move: 'drive', args: [d] }));
+    if (p.ap > 0 && p.boat) riverReach(G.map, p.pos, Math.floor(p.ap * BOAT_STEPS)).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
     if (p.money >= BOARD_COST) G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));   // discoveries are uncapped in hand
