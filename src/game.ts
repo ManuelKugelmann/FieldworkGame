@@ -48,7 +48,7 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
-export const BAL = { wander: true, seasonBenign: 36, round0Ramp: false };   // wander = rotating start player; seasonBenign ≈ field-season rounds (+4 monsoon tail); round0Ramp = handicap the round-1 opener's AP
+export const BAL = { wander: true, seasonBenign: 26, round0Ramp: false };   // wander = rotating start player; seasonBenign ≈ field-season rounds (+4 monsoon tail) → ~30 rounds; round0Ramp = handicap the round-1 opener's AP
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 // catalogue difficulty by colour tier — bare 2d6 success: easy ~83%, mid ~42%, hard 0% (needs gear). Gear/specialist bonuses push the hard ones over.
@@ -110,7 +110,7 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
   return 0;
 }
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
-const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // the TWO research sites: base lab + frontier (remote) research site. Each holds a SHARED, face-up open pool (tile.cache) — Texas Hold'em community cards.
+const isResearch = (t: Tile) => t.hotspot === 'base';  // ONE shared research pool during the field season — the base (Texas Hold'em community cards). The frontier ⛺ is a forage POI, not a publish/stash site.
 // the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
 // the pool you publish from: in the LAB season the shared base pool (you dumped your hand into it on entry, and publish ONE hand from it); in the field the open pool at the research site you're on
 const pubPool = (G: GState, p: PlayerS): Discovery[] | null => G.epilogue ? G.map[G.base].cache : (isResearch(G.map[p.pos]) ? G.map[p.pos].cache : null);
