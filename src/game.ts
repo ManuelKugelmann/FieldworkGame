@@ -657,16 +657,18 @@ const goalCells = (G: GState, goal: (t: Tile) => boolean) => { const a: number[]
 const nearestDist = (cells: number[], from: number) => cells.reduce((m, c) => Math.min(m, manhattan(from, c)), Infinity);
 // car: board a co-located idle car / drive to the road cell nearest the goal / dismount once roads stop helping
 function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: unknown[] } | null {
-  const p = G.players[ctx.currentPlayer]; if (!goals.length) return null;
-  const here = nearestDist(goals, p.pos);
+  const p = G.players[ctx.currentPlayer];
   const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer && v.kind === 'car');   // the heuristic only drives ground cars (motorboats are a human tool)
   if (myCar) {                                                          // driving → ALWAYS drive or leave (never fall through to a foot move while behind the wheel)
-    if (p.ap <= 0) return { move: 'leave', args: [] };                 // out of AP → step out so foot moves are possible next turn
+    if (p.ap <= 0 || !goals.length) return { move: 'leave', args: [] };   // out of AP or nothing to chase → step out so foot moves are possible
+    const here = nearestDist(goals, p.pos);
     let best = -1, bd = here;
     for (const c of roadReach(G.map, myCar.pos, Math.floor(p.ap * CAR_STEPS))) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
     return best >= 0 ? { move: 'drive', args: [best] } : { move: 'leave', args: [] };
   }
-  if (p.ap < 1 || here < 3) return null;   // on foot: only bother boarding when affordable and the goal is far enough that roads save real distance
+  if (!goals.length || p.ap < 1) return null;
+  const here = nearestDist(goals, p.pos);
+  if (here < 3) return null;   // on foot: only bother boarding when the goal is far enough that roads save real distance
   const vi = p.money >= BOARD_COST ? G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && v.kind === 'car') : -1;   // parked car underfoot → board if roads lead closer (and the fee is affordable)
   if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
   return null;
@@ -705,6 +707,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     if (nx >= 0) { if (p.ap >= (p.boat ? boatCost : cost)(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // reachable — step now, else wait for AP next turn
     else if (hasHand && p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };  // genuinely no hub reachable → fly home
   }
+  if (myVehicle(G, ctx.currentPlayer)) return { move: 'leave', args: [] };                   // still driving with nothing better → step out (never foot-move behind the wheel)
   const can = p.boat ? canBoat : canMove, wt = p.boat ? boatCost : cost;                    // fallback: any affordable step (don't stall)
   const opts = nbrs(p.pos).filter(t => can(G.map, p.pos, t) && p.ap >= wt(G.map, p.pos, t));
   if (!hasHand && opts.length) return { move: 'move', args: [opts[Math.floor(rand() * opts.length)]] };
