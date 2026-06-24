@@ -15,10 +15,10 @@ export interface TileEvent { event: TileEventKind; }
 export type Card = Discovery | TileEvent;                          // a stack holds specimens + events mixed
 const isEvent = (c: Card): c is TileEvent => 'event' in c;
 export type Hotspot = 'base' | 'remote' | 'village' | 'riverVillage';  // POIs: road base (market + research), frontier (remote) research site, road market (village), little river-bank village (market; home of the shared boat)
-export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile / in a car trunk (droppable/pickup-able)
+export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile (droppable/pickup-able)
 export interface Equip { kind: EquipKind; gear?: GearItem; }   // a cached item: a boat, or a gear kit (carries its full GearItem)
 export type VehicleKind = 'car' | 'motorboat';   // car = positioned road vehicle; motorboat = positioned LARGE-RIVER vehicle (fast channel travel, board from the bank / dock to the bank)
-export interface Vehicle { pos: number; driver: string | null; trunk: Equip[]; kind: VehicleKind; }  // a positioned entity you board/leave; drive moves both; trunk rides along (shared, ≤ TRUNK_SLOTS)
+export interface Vehicle { pos: number; driver: string | null; kind: VehicleKind; }  // a positioned entity you board/leave; drive moves both
 // GEAR: typed kit that shares the carry slots with specimens. generic g1/g2/g3 = +1/+2/+3 to every catalogue roll; a FIELD kit = bigger bonus but only for its discipline.
 export type GearKind = 'g1' | 'g2' | 'g3' | 'field';
 export interface GearItem { kind: GearKind; field?: DType; }   // field = the discipline a 'field' kit boosts
@@ -37,7 +37,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/turn; in round 1 only it ramps UP by play order (start player least) to offset first-mover advantage
-  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, BOAT_PRICE = 5, CAR_PRICE = 8, TRUNK_SLOTS = 3, MOTORBOAT_STEPS = 2;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat ("boat") covers per AP  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // TRUNK_SLOTS = items a car can carry in its trunk  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // BOAT_PRICE/CAR_PRICE: buy a personal boat / spawn a car at a market  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 3, BOAT_STEPS = 2, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, MOTORBOAT_STEPS = 2;  // MOTORBOAT_STEPS = large-river channel tiles a motorboat ("boat") covers per AP  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
@@ -516,7 +516,6 @@ const leave: Move<GState> = ({ G, ctx }) => {   // step out (free): a car stays 
   G.log.push(`Player ${+ctx.currentPlayer + 1} leave ${car.kind}@${car.pos}`);
 };
 // drop/pickup cache items (boat or any gear kit) on the current tile (free). At the BASE this tile is the communal lab stash.
-const carHere = (G: GState, pos: number) => G.vehicles.find(v => v.pos === pos);   // a co-located car (for trunk stash/unstash)
 const drop: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   // sel: 'boat', or an index into your gear
   const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, where = p.pos === G.base ? 'lab' : `@${p.pos}`;
   if (G.epilogue) return INVALID_MOVE;
@@ -535,24 +534,6 @@ const pickup: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   
   if (!hasRoom(p)) return INVALID_MOVE;
   const g = eq.splice(idx, 1)[0].gear!; p.gear.push(g);
   G.log.push(`Player ${+ctx.currentPlayer + 1} pickup ${gearTag(g)} ${where}`);
-};
-// stash/unstash items into a co-located car's trunk (free) — items ride with the car when driven
-const stash: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   // sel: 'boat', or an index into your gear
-  const p = G.players[ctx.currentPlayer], car = carHere(G, p.pos);
-  if (G.epilogue || !car || car.trunk.length >= TRUNK_SLOTS) return INVALID_MOVE;
-  if (sel === 'boat') { if (!p.boat) return INVALID_MOVE; p.boat = false; car.trunk.push({ kind: 'boat' }); G.log.push(`Player ${+ctx.currentPlayer + 1} stash boat → trunk`); return; }
-  if (sel < 0 || sel >= p.gear.length) return INVALID_MOVE;
-  const g = p.gear.splice(sel, 1)[0]; car.trunk.push({ kind: 'gear', gear: g });
-  G.log.push(`Player ${+ctx.currentPlayer + 1} stash ${gearTag(g)} → trunk`);
-};
-const unstash: Move<GState> = ({ G, ctx }, i = 0) => {   // i = index into the co-located car's trunk
-  const p = G.players[ctx.currentPlayer], car = carHere(G, p.pos);
-  if (G.epilogue || !car || i < 0 || i >= car.trunk.length) return INVALID_MOVE;
-  const it = car.trunk[i];
-  if (it.kind === 'boat') { if (p.boat) return INVALID_MOVE; p.boat = true; car.trunk.splice(i, 1); G.log.push(`Player ${+ctx.currentPlayer + 1} take boat ← trunk`); return; }
-  if (!hasRoom(p)) return INVALID_MOVE;
-  const g = car.trunk.splice(i, 1)[0].gear!; p.gear.push(g);
-  G.log.push(`Player ${+ctx.currentPlayer + 1} take ${gearTag(g)} ← trunk`);
 };
 // (discoveries are NOT droppable — a carried hand only leaves you by being force-stashed at a research site, then consumed by research)
 
@@ -723,11 +704,9 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   return { event: 'endTurn' };
 }
 
-const buy: Move<GState> = ({ G, ctx }, kind: GearKind | 'boat' | 'car' = 'g1', field?: DType) => {   // buy a kit / boat / car at a market (free action, no AP)
+const buy: Move<GState> = ({ G, ctx }, kind: GearKind = 'g1', field?: DType) => {   // buy a gear kit at a market (free action, no AP) — cars and boats are NOT buyable
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
   if (G.epilogue || !isMarket(tile)) return INVALID_MOVE;
-  if (kind === 'boat') { if (p.boat || p.money < BOAT_PRICE) return INVALID_MOVE; p.money -= BOAT_PRICE; p.boat = true; G.log.push(`buy boat (-${BOAT_PRICE}$)`); return; }
-  if (kind === 'car') { if (p.money < CAR_PRICE) return INVALID_MOVE; p.money -= CAR_PRICE; G.vehicles.push({ pos: p.pos, driver: null, trunk: [], kind: 'car' }); G.log.push(`buy car@${p.pos} (-${CAR_PRICE}$)`); return; }
   const price = GEAR_PRICE[kind];
   if (p.gear.length >= GEAR_MAX || p.money < price) return INVALID_MOVE;
   if (kind === 'field' && !field) return INVALID_MOVE;
@@ -755,13 +734,9 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.money >= BOARD_COST) G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
     if (p.ap >= 1) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));   // discoveries are uncapped in hand
-    if (isMarket(tile)) {   // buy a chosen gear kit / boat / car (selectable)
-      if (p.gear.length < GEAR_MAX) {
-        (['g1', 'g2', 'g3'] as GearKind[]).forEach(k => { if (p.money >= GEAR_PRICE[k]) out.push({ move: 'buy', args: [k] }); });
-        if (p.money >= GEAR_PRICE.field) DTYPES.forEach(t => out.push({ move: 'buy', args: ['field', t] }));
-      }
-      if (!p.boat && p.money >= BOAT_PRICE) out.push({ move: 'buy', args: ['boat'] });
-      if (p.money >= CAR_PRICE) out.push({ move: 'buy', args: ['car'] });
+    if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // buy a chosen gear kit (cars/boats are not buyable)
+      (['g1', 'g2', 'g3'] as GearKind[]).forEach(k => { if (p.money >= GEAR_PRICE[k]) out.push({ move: 'buy', args: [k] }); });
+      if (p.money >= GEAR_PRICE.field) DTYPES.forEach(t => out.push({ move: 'buy', args: ['field', t] }));
     }
     if (p.boat) out.push({ move: 'drop', args: ['boat'] });                                   // cache items on this tile (lab stash at base)
     p.gear.forEach((_, i) => out.push({ move: 'drop', args: [i] }));
@@ -769,14 +744,6 @@ export const enumerate = (G: GState, ctx: any) => {
       if (e.kind === 'boat' && !p.boat) out.push({ move: 'pickup', args: [i] });
       if (e.kind === 'gear' && hasRoom(p)) out.push({ move: 'pickup', args: [i] });
     });
-    const car = carHere(G, p.pos);                                                            // co-located car → trunk stash/unstash
-    if (car) {
-      if (car.trunk.length < TRUNK_SLOTS) { if (p.boat) out.push({ move: 'stash', args: ['boat'] }); p.gear.forEach((_, i) => out.push({ move: 'stash', args: [i] })); }
-      car.trunk.forEach((e, i) => {
-        if (e.kind === 'boat' && !p.boat) out.push({ move: 'unstash', args: [i] });
-        if (e.kind === 'gear' && hasRoom(p)) out.push({ move: 'unstash', args: [i] });
-      });
-    }
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
@@ -827,11 +794,11 @@ export const Expedition: Game<GState> = {
     map[start].revealed = true;
     const village = map.findIndex(t => t.hotspot === 'village');   // a road market
     const vehicles: Vehicle[] = [
-      { pos: start, driver: null, trunk: [], kind: 'car' as const },                          // 1 car at the research base
-      { pos: village >= 0 ? village : start, driver: null, trunk: [], kind: 'car' as const },  // 1 car at a village (fallback: base)
+      { pos: start, driver: null, kind: 'car' as const },                          // 1 car at the research base
+      { pos: village >= 0 ? village : start, driver: null, kind: 'car' as const },  // 1 car at a village (fallback: base)
     ];
     const rvs: number[] = []; map.forEach((t, i) => { if (t.hotspot === 'riverVillage') rvs.push(i); });   // each river village starts with 1 canoe + 1 motorboat, both ON its (water) tile
-    if (rvs.length) for (const rvi of rvs) { map[rvi].equipment.push({ kind: 'boat' }); vehicles.push({ pos: rvi, driver: null, trunk: [], kind: 'motorboat' }); }
+    if (rvs.length) for (const rvi of rvs) { map[rvi].equipment.push({ kind: 'boat' }); vehicles.push({ pos: rvi, driver: null, kind: 'motorboat' }); }
     else map[start].equipment.push({ kind: 'boat' });   // fallback: a canoe at base if no river village exists
     const roleBag = [...ROLES]; { const rr = prng((seed ^ 0x2545f491) >>> 0); for (let i = roleBag.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [roleBag[i], roleBag[j]] = [roleBag[j], roleBag[i]]; } }   // specialist roles shuffled per match (not fixed by seat)
     return {
@@ -844,7 +811,7 @@ export const Expedition: Game<GState> = {
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'], roundEvent: '',
     };
   },
-  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, stash, unstash },
+  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup },
   // EXPERIMENTAL knob — lab-season frontier merge: 'last' (only last player), 'all' (at lab start, everyone), 'none'
   turn: {
     onBegin: ({ G, ctx, random }) => {
