@@ -48,7 +48,7 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
-export const BAL = { wander: true, seasonBenign: 36 };   // wander = rotating start player; seasonBenign = benign event cards (≈ field-season length in rounds, +4 monsoon tail) → ~40 rounds
+export const BAL = { wander: true, seasonBenign: 36, round0Ramp: false };   // wander = rotating start player; seasonBenign ≈ field-season rounds (+4 monsoon tail); round0Ramp = handicap the round-1 opener's AP
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 // catalogue difficulty by colour tier — bare 2d6 success: easy ~83%, mid ~42%, hard 0% (needs gear). Gear/specialist bonuses push the hard ones over.
@@ -851,7 +851,9 @@ export const Expedition: Game<GState> = {
         }
         p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
       } else {
-        p.ap = START_AP + (G.roundEvent === 'tailwind' ? 1 : 0);   // flat AP + this round's global tailwind bonus; wandering start (not an AP handicap) rotates the first-mover edge
+        const round = Math.floor((ctx.turn - 1) / ctx.numPlayers), pos = (ctx.turn - 1) % ctx.numPlayers;
+        const base = (BAL.round0Ramp && round === 0) ? Math.max(1, START_AP - (ctx.numPlayers - 1 - pos)) : START_AP;   // optional round-1 ramp: the opener gets the fewest AP
+        p.ap = base + (G.roundEvent === 'tailwind' ? 1 : 0);
       }
     },
     order: {
