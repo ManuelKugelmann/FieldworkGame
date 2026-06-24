@@ -587,7 +587,7 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   };
   const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
   const ordered = DTYPES.flatMap(a => DTYPES.filter(b => b !== a).map(b => [a, b] as [DType, DType]));   // ordered pairs (full house a-over-b)
-  const deck: Pattern[] = [
+  const base: Pattern[] = [
     // COMMON entry-level options (several copies so they recur in the 5-slot pool): symbol pairs, colour pairs, colour+symbol pair combos, triples
     ...Array.from({ length: 4 }).flatMap(() => DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }]))),
     ...Array.from({ length: 4 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }]))),
@@ -604,6 +604,10 @@ function buildGoalDeck(rand: () => number): Pattern[] {
     mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t }))),
     mk('colour straight', colors.map(c => ({ count: 1, color: c }))),
   ];
+  // replicate the whole deck so it holds enough options for ANY game length — then a plain refill never runs dry (no recycling bookkeeping)
+  const COPIES = 6;
+  const deck: Pattern[] = [];
+  for (let r = 0; r < COPIES; r++) for (const p of base) deck.push(r === 0 ? p : { ...p, id: `g${n++}` });
   return shuf(deck);
 }
 const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; for (const id in G.players) if (id !== self) out.push(...G.players[id].published); return out; };
@@ -630,12 +634,8 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
   p.published.push(...used);                                          // → your published pool (public record)
   p.prestige += pat.prestige; p.money += pat.money; p.pubs += 1;     // research token → prestige; bump publish count (raises next publish's AP cost)
   G.log.push(`publish ${pat.label} +${pat.prestige}P +${pat.money}$`);
-  const gi = G.goals.findIndex(x => x.id === pat.id);                // CLAIM the question, recycle it to the deck bottom, and TOP UP the open pool to POOL_SIZE
-  if (gi >= 0) {
-    const claimed = G.goals.splice(gi, 1)[0];
-    G.goalDeck.push(claimed);                                        // recycle so the deck never runs dry (the cards are the scarce resource, not the questions)
-    while (G.goals.length < POOL_SIZE && G.goalDeck.length) G.goals.push(G.goalDeck.shift()!);
-  }
+  const gi = G.goals.findIndex(x => x.id === pat.id);                // CLAIM the question: remove it and refill the open pool from the (large) deck
+  if (gi >= 0) { G.goals.splice(gi, 1); if (G.goalDeck.length) G.goals.push(G.goalDeck.shift()!); }
 };
 
 
