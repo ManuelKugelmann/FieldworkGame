@@ -630,8 +630,12 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
   p.published.push(...used);                                          // → your published pool (public record)
   p.prestige += pat.prestige; p.money += pat.money; p.pubs += 1;     // research token → prestige; bump publish count (raises next publish's AP cost)
   G.log.push(`publish ${pat.label} +${pat.prestige}P +${pat.money}$`);
-  const gi = G.goals.findIndex(x => x.id === pat.id);                // CLAIM the question: remove it and refill the pool from the deck
-  if (gi >= 0) { G.goals.splice(gi, 1); if (G.goalDeck.length) G.goals.push(G.goalDeck.shift()!); }
+  const gi = G.goals.findIndex(x => x.id === pat.id);                // CLAIM the question, recycle it to the deck bottom, and TOP UP the open pool to POOL_SIZE
+  if (gi >= 0) {
+    const claimed = G.goals.splice(gi, 1)[0];
+    G.goalDeck.push(claimed);                                        // recycle so the deck never runs dry (the cards are the scarce resource, not the questions)
+    while (G.goals.length < POOL_SIZE && G.goalDeck.length) G.goals.push(G.goalDeck.shift()!);
+  }
 };
 
 
