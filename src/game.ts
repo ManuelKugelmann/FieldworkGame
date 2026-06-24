@@ -575,14 +575,15 @@ function assemble(G: GState, id: string, owned: Discovery[], citable: Discovery[
 function buildGoalDeck(rand: () => number): Pattern[] {
   const colors = Array.from({ length: COLORS }, (_, i) => i);
   const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  // PAYOUT matches difficulty + statistics: each card costs 1 + discipline rarity + colour difficulty; reward scales with the project's summed difficulty
-  const COL_DIFF = [0, 2, 5];   // colour difficulty premium (easy/mid/hard) — tracks the catalogue DCs 5/8/13 (hard is gear-gated)
-  const cardCost = (p: GoalPart) => 1 + (p.type ? DISC_RARITY[p.type] : 0) + (p.color !== undefined ? COL_DIFF[p.color] : 0);
-  const PRESTIGE_K = 0.4, MONEY_K = 0.25;
+  // PAYOUT = difficulty × rarity × combo: each card's value = colour difficulty × discipline rarity; the project scales that by its combo size (bigger matching sets cost super-linearly)
+  const cdiff = [1, 2, 5];   // colour difficulty (multiplicative; no-colour part = 1) — tracks the catalogue DCs 5/8/13
+  const cardVal = (p: GoalPart) => (p.color !== undefined ? cdiff[p.color] : 1) * (1 + (p.type ? DISC_RARITY[p.type] : 0));
+  const PRESTIGE_K = 0.22, MONEY_K = 0.12;
   let n = 0;
   const mk = (label: string, parts: GoalPart[]): Pattern => {
-    const diff = parts.reduce((s, pt) => s + pt.count * cardCost(pt), 0);
-    return { id: `g${n++}`, label, parts, prestige: Math.max(1, Math.round(diff * PRESTIGE_K)), money: Math.max(1, Math.round(diff * MONEY_K)) };
+    const cards = parts.reduce((s, pt) => s + pt.count, 0);
+    const raw = parts.reduce((s, pt) => s + pt.count * cardVal(pt), 0) * (cards / 2);   // (Σ difficulty×rarity) × combo size
+    return { id: `g${n++}`, label, parts, prestige: Math.max(1, Math.round(raw * PRESTIGE_K)), money: Math.max(1, Math.round(raw * MONEY_K)) };
   };
   const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
   const ordered = DTYPES.flatMap(a => DTYPES.filter(b => b !== a).map(b => [a, b] as [DType, DType]));   // ordered pairs (full house a-over-b)
