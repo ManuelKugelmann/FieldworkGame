@@ -587,6 +587,9 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
   const ordered = DTYPES.flatMap(a => DTYPES.filter(b => b !== a).map(b => [a, b] as [DType, DType]));   // ordered pairs (full house a-over-b)
   const deck: Pattern[] = [
+    // PAIRS — the common, entry-level options (2 matching by symbol or by colour); several copies so they recur in the pool
+    ...Array.from({ length: 4 }).flatMap(() => DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }], 2, 1))),
+    ...Array.from({ length: 4 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }], 2, 1))),
     ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 4, 1)),
     ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 4, 1)),
     ...pairs.map(([a, b]) => mk(`${a} + ${b} two pair`, [{ count: 2, type: a }, { count: 2, type: b }], 4, 1)),
