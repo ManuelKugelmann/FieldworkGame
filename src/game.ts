@@ -110,15 +110,15 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
   return 0;
 }
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
-const isResearch = (t: Tile) => t.hotspot === 'base';  // ONE shared research pool during the field season — the base (Texas Hold'em community cards). The frontier ⛺ is a forage POI, not a publish/stash site.
+const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // base AND frontier are research terminals — BUT both read/write ONE shared pool (the base cache; comms established between the sites)
 // the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
 // the pool you publish from: in the LAB season the shared base pool (you dumped your hand into it on entry, and publish ONE hand from it); in the field the open pool at the research site you're on
-const pubPool = (G: GState, p: PlayerS): Discovery[] | null => G.epilogue ? G.map[G.base].cache : (isResearch(G.map[p.pos]) ? G.map[p.pos].cache : null);
+const pubPool = (G: GState, p: PlayerS): Discovery[] | null => (G.epilogue || isResearch(G.map[p.pos])) ? G.map[G.base].cache : null;   // the single shared pool (base cache), reachable from base OR frontier
 // entering a research site force-stashes your whole hand into that site's shared pool — open for ANY player's research, consumed when used
 function landAt(G: GState, cur: string) {
   const p = G.players[cur], t = G.map[p.pos];
   if (!G.epilogue && isResearch(t) && p.samples.length) {
-    t.cache.push(...p.samples); G.log.push(`Player ${+cur + 1} stash ${p.samples.length} → ${t.hotspot === 'base' ? 'lab' : 'frontier'} pool`); p.samples.length = 0;
+    G.map[G.base].cache.push(...p.samples); G.log.push(`Player ${+cur + 1} stash ${p.samples.length} → shared pool`); p.samples.length = 0;
   }
 }
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' || t.hotspot === 'riverVillage';  // buy gear/boat/car here (base + road village + river village)
