@@ -587,7 +587,7 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   };
   const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
   const ordered = DTYPES.flatMap(a => DTYPES.filter(b => b !== a).map(b => [a, b] as [DType, DType]));   // ordered pairs (full house a-over-b)
-  const base: Pattern[] = [
+  const deck: Pattern[] = [
     // COMMON entry-level options (several copies so they recur in the 5-slot pool): symbol pairs, colour pairs, colour+symbol pair combos, triples
     ...Array.from({ length: 4 }).flatMap(() => DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }]))),
     ...Array.from({ length: 4 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }]))),
@@ -604,10 +604,7 @@ function buildGoalDeck(rand: () => number): Pattern[] {
     mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t }))),
     mk('colour straight', colors.map(c => ({ count: 1, color: c }))),
   ];
-  // replicate the deck a couple of times so it holds more options than any game uses (~270 in the refill deck vs <100 publishes/game) — a plain refill never runs dry
-  const COPIES = 2;
-  const deck: Pattern[] = [];
-  for (let r = 0; r < COPIES; r++) for (const p of base) deck.push(r === 0 ? p : { ...p, id: `g${n++}` });
+  // ~136 distinct patterns → ~131 refill options vs a measured MAX of 17 publishes/game — a 7× buffer, so no replication needed and the plain refill never runs dry
   return shuf(deck);
 }
 const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; for (const id in G.players) if (id !== self) out.push(...G.players[id].published); return out; };
