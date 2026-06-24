@@ -582,7 +582,7 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   let n = 0;
   const mk = (label: string, parts: GoalPart[]): Pattern => {
     const cards = parts.reduce((s, pt) => s + pt.count, 0);
-    const raw = parts.reduce((s, pt) => s + pt.count * cardVal(pt), 0) * (cards / 2);   // (Σ difficulty×rarity) × combo size
+    const raw = parts.reduce((s, pt) => s + pt.count * cardVal(pt), 0) * (1 + (cards - 2) * 0.3);   // (Σ difficulty×rarity) × a DAMPENED combo factor (not fully multiplicative)
     return { id: `g${n++}`, label, parts, prestige: Math.max(1, Math.round(raw * PRESTIGE_K)), money: Math.max(1, Math.round(raw * MONEY_K)) };
   };
   const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
@@ -591,6 +591,7 @@ function buildGoalDeck(rand: () => number): Pattern[] {
     // COMMON entry-level options (several copies so they recur in the 5-slot pool): symbol pairs, colour pairs, colour+symbol pair combos, triples
     ...Array.from({ length: 4 }).flatMap(() => DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }]))),
     ...Array.from({ length: 4 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }]))),
+    ...Array.from({ length: 2 }).flatMap(() => DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} pair`, [{ count: 2, type: t, color: c }])))),   // coloured symbol pairs (both axes pinned)
     ...Array.from({ length: 2 }).flatMap(() => DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} pair combo`, [{ count: 2, color: c }, { count: 2, type: t }])))),
     ...Array.from({ length: 3 }).flatMap(() => DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }]))),
     ...Array.from({ length: 3 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }]))),
@@ -796,7 +797,7 @@ function applyEvent(G: GState, id: string, random: any) {
   } else if (id === 'monsoon') G.monsoon += 1;
   G.log.push(`event:${id}${id === 'monsoon' ? ` ⛈${G.monsoon}/${MONSOON_END}` : ''}`);
 }
-const vp = (p: PlayerS) => p.prestige + Math.floor(p.money / 4);  // unified prestige (research − negative tokens) + money/4
+const vp = (p: PlayerS) => p.prestige + Math.floor(p.money / 5);  // unified prestige + money/5 → 5$ (= 50k$ shown) per 1 prestige
 
 export const Expedition: Game<GState> = {
   name: 'expedition',
