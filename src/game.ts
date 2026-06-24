@@ -620,8 +620,8 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
 };
 
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED open pool at this research site (or the lab pool in the epilogue)
-  const p = G.players[ctx.currentPlayer], apCost = publishCost(p.pubs), pool = pubPool(G, p);
-  if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier) — cost rises with publish count
+  const p = G.players[ctx.currentPlayer], apCost = G.epilogue ? 1 : publishCost(p.pubs), pool = pubPool(G, p);   // field publish is free; LAB publish costs 1 AP so each player publishes ONCE per lab turn
+  if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier)
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
   const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the open pool — anyone's stashed cards are fair game
   p.ap -= apCost;   // free (0 AP) under the current experiment
@@ -682,7 +682,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
   // publish from the shared open pool at a research site — claim the most valuable open question the pool can complete (your hand was force-stashed here on arrival)
   const pool = pubPool(G, p);
-  if (pool && p.ap >= publishCost(p.pubs)) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, pool, [])) return { move: 'publish', args: [pat.id] };
+  if (pool && p.ap >= (G.epilogue ? 1 : publishCost(p.pubs))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, pool, [])) return { move: 'publish', args: [pat.id] };
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // invest spare money in gear: best affordable generic kit
     const buyable = (['g3', 'g2', 'g1'] as GearKind[]).find(k => p.money >= GEAR_PRICE[k] + 4);
@@ -762,7 +762,7 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
-  if (pool && p.ap >= publishCost(p.pubs)) G.goals.forEach(pat => { if (assemble(G, pat.id, pool, [])) out.push({ move: 'publish', args: [pat.id] }); });
+  if (pool && p.ap >= (G.epilogue ? 1 : publishCost(p.pubs))) G.goals.forEach(pat => { if (assemble(G, pat.id, pool, [])) out.push({ move: 'publish', args: [pat.id] }); });
   out.push({ event: 'endTurn' });
   return out;
 };
@@ -849,7 +849,7 @@ export const Expedition: Game<GState> = {
           if (mergeNow) G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
           if (p.samples.length) { G.log.push(`Player ${+ctx.currentPlayer + 1} dump ${p.samples.length} → lab pool`); lab.push(...p.samples); p.samples.length = 0; }
         }
-        p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
+        p.ap = 1;   // exactly enough AP for ONE publish this lab turn
       } else {
         const round = Math.floor((ctx.turn - 1) / ctx.numPlayers), pos = (ctx.turn - 1) % ctx.numPlayers;
         const base = (BAL.round0Ramp && round === 0) ? Math.max(1, START_AP - (ctx.numPlayers - 1 - pos)) : START_AP;   // optional round-1 ramp: the opener gets the fewest AP
