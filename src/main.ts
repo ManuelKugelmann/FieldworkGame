@@ -96,7 +96,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   const endWarn = !G.epilogue && G.monsoon > 0 ? ` · ⛈ ${left} round${left === 1 ? '' : 's'} to end of field season` : '';
   const roundEv = !G.epilogue && G.roundEvent && EVENT_LABEL[G.roundEvent] ? ` · ${EVENT_LABEL[G.roundEvent]}` : '';   // the one global event affecting everyone this round
   $('status').textContent = ctx.gameover
-    ? `game over — winner P${ctx.gameover.winner}`
+    ? `game over — winner Player ${+ctx.gameover.winner + 1}`
     : `${phase}${isBot ? ' · 🤖' : ''}${roundEv}${endWarn}`;
   $('research-h').innerHTML = ctx.gameover ? 'Research' : `📜 Research <span class="ap">${publishCost(cur.pubs)} AP</span>`;   // publish AP cost (rises with your publish count)
 

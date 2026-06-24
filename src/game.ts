@@ -116,7 +116,7 @@ const pubPool = (G: GState, p: PlayerS): Discovery[] | null => G.epilogue ? G.ma
 function landAt(G: GState, cur: string) {
   const p = G.players[cur], t = G.map[p.pos];
   if (!G.epilogue && isResearch(t) && p.samples.length) {
-    t.cache.push(...p.samples); G.log.push(`P${cur} stash ${p.samples.length} → ${t.hotspot === 'base' ? 'lab' : 'frontier'} pool`); p.samples.length = 0;
+    t.cache.push(...p.samples); G.log.push(`Player ${+cur + 1} stash ${p.samples.length} → ${t.hotspot === 'base' ? 'lab' : 'frontier'} pool`); p.samples.length = 0;
   }
 }
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' || t.hotspot === 'riverVillage';  // buy gear/boat/car here (base + road village + river village)
@@ -439,11 +439,11 @@ function fireEvent(G: GState, t: number, kind: TileEventKind, random: any, cur: 
     const n = tile.finds.length; tile.finds.length = 0;
     if (!tile.hotspot) for (const j of nbrs(t)) { tile.blocked |= dirBit(t, j); G.map[j].blocked |= dirBit(j, t); }
     if (from >= 0 && from !== t) { p.pos = from; const car = myVehicle(G, cur); if (car && car.pos === t) car.pos = from; }   // bump the player (and a car they drove in) back to the entry tile
-    G.log.push(`⛏ rockslide @${t} — tile sealed${n ? `, ${n} find${n > 1 ? 's' : ''} buried` : ''}, P${cur} bumped back`);
+    G.log.push(`⛏ rockslide @${t} — tile sealed${n ? `, ${n} find${n > 1 ? 's' : ''} buried` : ''}, Player ${+cur + 1} bumped back`);
   }
-  else if (kind === 'animalAttack') G.log.push(`🐗 animal attack — P${cur} loses ${loseItem(p, random)}`);
-  else if (kind === 'bushthieves') { const take = Math.min(p.money, BUSHTHIEF_TAKE); p.money -= take; G.log.push(`🏴 bushthieves @${t} — P${cur} -${take}$`); }
-  else { const ty = dominantType(tile.terrain); p.samples.push({ type: ty, color: 0 }); G.log.push(`🧭 helpful native — P${cur} gains ${ty}0`); }   // a free easy specimen of the local discipline
+  else if (kind === 'animalAttack') G.log.push(`🐗 animal attack — Player ${+cur + 1} loses ${loseItem(p, random)}`);
+  else if (kind === 'bushthieves') { const take = Math.min(p.money, BUSHTHIEF_TAKE); p.money -= take; G.log.push(`🏴 bushthieves @${t} — Player ${+cur + 1} -${take}$`); }
+  else { const ty = dominantType(tile.terrain); p.samples.push({ type: ty, color: 0 }); G.log.push(`🧭 helpful native — Player ${+cur + 1} gains ${ty}0`); }   // a free easy specimen of the local discipline
 }
 function reveal(G: GState, t: number, random: any, cur: string, from: number) {
   const tile = G.map[t]; if (tile.revealed) return;
@@ -477,7 +477,7 @@ const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   if (p.ap < c) return INVALID_MOVE;
   const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
   const from = p.pos; p.ap -= c; p.pos = t; reveal(G, t, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
-  G.log.push(`P${ctx.currentPlayer} → ${t} (-${c}ap${p.boat ? ' 🛶' : ''})`);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} → ${t} (-${c}ap${p.boat ? ' 🛶' : ''})`);
 };
 // generic link-ride: travel up to `steps` tiles along link `k` for 1 AP. car→roads, boat→river channel — same code, different prerequisite.
 function ride(G: GState, ctx: any, random: any, dest: number, from: number, steps: number, k: EdgeKind, allowed: boolean, arrive: () => void, log: string) {
@@ -493,7 +493,7 @@ const drive: Move<GState> = ({ G, ctx, random }, dest: number) => {   // drive t
 };
 const boatRun: Move<GState> = ({ G, ctx, random }, dest: number) => {   // boat: up to BOAT_STEPS river-channel tiles per AP
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
-  return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `P${ctx.currentPlayer} 🛶→ ${dest} (-1ap)`);
+  return ride(G, ctx, random, dest, p.pos, BOAT_STEPS, 'rivers', p.boat, () => { if (car) car.driver = null; }, `Player ${+ctx.currentPlayer + 1} 🛶→ ${dest} (-1ap)`);
 };
 const BOARD_COST = 1;   // money to climb into a vehicle (a small hire fee)
 const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into an unoccupied vehicle (costs BOARD_COST$): a car you're stood on, or a motorboat moored on an adjacent river tile (hop aboard from the bank)
@@ -502,7 +502,7 @@ const board: Move<GState> = ({ G, ctx }, v = 0) => {   // climb into an unoccupi
   const aboard = car.pos === p.pos, hop = car.kind === 'motorboat' && nbrs(p.pos).includes(car.pos);
   if (!aboard && !hop) return INVALID_MOVE;
   p.money -= BOARD_COST; car.driver = ctx.currentPlayer; if (hop) p.pos = car.pos;   // pay the fee, step off the bank onto the moored motorboat
-  G.log.push(`P${ctx.currentPlayer} board ${car.kind}@${car.pos} (-${BOARD_COST}$)`);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} board ${car.kind}@${car.pos} (-${BOARD_COST}$)`);
 };
 const leave: Move<GState> = ({ G, ctx }) => {   // step out (free): a car stays where it is; a motorboat docks you to an adjacent bank tile
   const p = G.players[ctx.currentPlayer], car = myVehicle(G, ctx.currentPlayer);
@@ -513,17 +513,17 @@ const leave: Move<GState> = ({ G, ctx }) => {   // step out (free): a car stays 
     p.pos = dock;
   }
   car.driver = null;
-  G.log.push(`P${ctx.currentPlayer} leave ${car.kind}@${car.pos}`);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} leave ${car.kind}@${car.pos}`);
 };
 // drop/pickup cache items (boat or any gear kit) on the current tile (free). At the BASE this tile is the communal lab stash.
 const carHere = (G: GState, pos: number) => G.vehicles.find(v => v.pos === pos);   // a co-located car (for trunk stash/unstash)
 const drop: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   // sel: 'boat', or an index into your gear
   const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, where = p.pos === G.base ? 'lab' : `@${p.pos}`;
   if (G.epilogue) return INVALID_MOVE;
-  if (sel === 'boat') { if (!p.boat) return INVALID_MOVE; p.boat = false; eq.push({ kind: 'boat' }); G.log.push(`P${ctx.currentPlayer} drop boat ${where}`); return; }
+  if (sel === 'boat') { if (!p.boat) return INVALID_MOVE; p.boat = false; eq.push({ kind: 'boat' }); G.log.push(`Player ${+ctx.currentPlayer + 1} drop boat ${where}`); return; }
   if (sel < 0 || sel >= p.gear.length) return INVALID_MOVE;
   const g = p.gear.splice(sel, 1)[0]; eq.push({ kind: 'gear', gear: g });
-  G.log.push(`P${ctx.currentPlayer} drop ${gearTag(g)} ${where}`);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} drop ${gearTag(g)} ${where}`);
 };
 const pickup: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   // sel: 'boat' (first boat), or an index into the tile's cached items
   const p = G.players[ctx.currentPlayer], eq = G.map[p.pos].equipment, where = p.pos === G.base ? 'lab' : `@${p.pos}`;
@@ -531,28 +531,28 @@ const pickup: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   
   const idx = sel === 'boat' ? eq.findIndex(e => e.kind === 'boat') : sel;
   if (idx < 0 || idx >= eq.length) return INVALID_MOVE;
   const it = eq[idx];
-  if (it.kind === 'boat') { if (p.boat) return INVALID_MOVE; p.boat = true; eq.splice(idx, 1); G.log.push(`P${ctx.currentPlayer} pickup boat ${where}`); return; }
+  if (it.kind === 'boat') { if (p.boat) return INVALID_MOVE; p.boat = true; eq.splice(idx, 1); G.log.push(`Player ${+ctx.currentPlayer + 1} pickup boat ${where}`); return; }
   if (!hasRoom(p)) return INVALID_MOVE;
   const g = eq.splice(idx, 1)[0].gear!; p.gear.push(g);
-  G.log.push(`P${ctx.currentPlayer} pickup ${gearTag(g)} ${where}`);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} pickup ${gearTag(g)} ${where}`);
 };
 // stash/unstash items into a co-located car's trunk (free) — items ride with the car when driven
 const stash: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   // sel: 'boat', or an index into your gear
   const p = G.players[ctx.currentPlayer], car = carHere(G, p.pos);
   if (G.epilogue || !car || car.trunk.length >= TRUNK_SLOTS) return INVALID_MOVE;
-  if (sel === 'boat') { if (!p.boat) return INVALID_MOVE; p.boat = false; car.trunk.push({ kind: 'boat' }); G.log.push(`P${ctx.currentPlayer} stash boat → trunk`); return; }
+  if (sel === 'boat') { if (!p.boat) return INVALID_MOVE; p.boat = false; car.trunk.push({ kind: 'boat' }); G.log.push(`Player ${+ctx.currentPlayer + 1} stash boat → trunk`); return; }
   if (sel < 0 || sel >= p.gear.length) return INVALID_MOVE;
   const g = p.gear.splice(sel, 1)[0]; car.trunk.push({ kind: 'gear', gear: g });
-  G.log.push(`P${ctx.currentPlayer} stash ${gearTag(g)} → trunk`);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} stash ${gearTag(g)} → trunk`);
 };
 const unstash: Move<GState> = ({ G, ctx }, i = 0) => {   // i = index into the co-located car's trunk
   const p = G.players[ctx.currentPlayer], car = carHere(G, p.pos);
   if (G.epilogue || !car || i < 0 || i >= car.trunk.length) return INVALID_MOVE;
   const it = car.trunk[i];
-  if (it.kind === 'boat') { if (p.boat) return INVALID_MOVE; p.boat = true; car.trunk.splice(i, 1); G.log.push(`P${ctx.currentPlayer} take boat ← trunk`); return; }
+  if (it.kind === 'boat') { if (p.boat) return INVALID_MOVE; p.boat = true; car.trunk.splice(i, 1); G.log.push(`Player ${+ctx.currentPlayer + 1} take boat ← trunk`); return; }
   if (!hasRoom(p)) return INVALID_MOVE;
   const g = car.trunk.splice(i, 1)[0].gear!; p.gear.push(g);
-  G.log.push(`P${ctx.currentPlayer} take ${gearTag(g)} ← trunk`);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} take ${gearTag(g)} ← trunk`);
 };
 // (discoveries are NOT droppable — a carried hand only leaves you by being force-stashed at a research site, then consumed by research)
 
@@ -864,7 +864,7 @@ export const Expedition: Game<GState> = {
         } else {
           const mergeNow = LAB_CFG.frontier === 'all' ? G.labLeft === ctx.numPlayers : LAB_CFG.frontier === 'last' ? G.labLeft === 1 : false;
           if (mergeNow) G.map.forEach(t => { if (t.hotspot === 'remote' && t.cache.length) { lab.push(...t.cache); t.cache.length = 0; } });
-          if (p.samples.length) { G.log.push(`P${ctx.currentPlayer} dump ${p.samples.length} → lab pool`); lab.push(...p.samples); p.samples.length = 0; }
+          if (p.samples.length) { G.log.push(`Player ${+ctx.currentPlayer + 1} dump ${p.samples.length} → lab pool`); lab.push(...p.samples); p.samples.length = 0; }
         }
         p.ap = publishCost(p.pubs);   // exactly enough AP for ONE publish this lab turn
       } else {

@@ -87,7 +87,7 @@ export function Board({ G, ctx, moves, events, reset, playerID }: Props) {
       <div className="controls">
         <button onClick={() => reset()}>New</button>
         <button disabled={!myTurn} onClick={() => dispatch(botAction(G, ctx, Math.random) as Action)}>Suggest</button>
-        <span className="turnline">{ctx.gameover ? `game over — winner P${ctx.gameover.winner}` : `${G.epilogue ? 'lab' : `turn ${ctx.turn}`} · P${ctx.currentPlayer}${seat === ctx.currentPlayer ? ' (you)' : ''} · ${cur.ap} AP · 🌧 ${G.monsoon}/4`}</span>
+        <span className="turnline">{ctx.gameover ? `game over — winner Player ${+ctx.gameover.winner + 1}` : `${G.epilogue ? 'lab' : `turn ${ctx.turn}`} · Player ${+ctx.currentPlayer + 1}${seat === ctx.currentPlayer ? ' (you)' : ''} · ${cur.ap} AP · 🌧 ${G.monsoon}/4`}</span>
         <span className="built">built {__BUILD_TIME__}</span>
       </div>
       <div className="cols">
