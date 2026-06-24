@@ -604,8 +604,8 @@ function buildGoalDeck(rand: () => number): Pattern[] {
     mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t }))),
     mk('colour straight', colors.map(c => ({ count: 1, color: c }))),
   ];
-  // replicate the whole deck so it holds enough options for ANY game length — then a plain refill never runs dry (no recycling bookkeeping)
-  const COPIES = 6;
+  // replicate the deck a couple of times so it holds more options than any game uses (~270 in the refill deck vs <100 publishes/game) — a plain refill never runs dry
+  const COPIES = 2;
   const deck: Pattern[] = [];
   for (let r = 0; r < COPIES; r++) for (const p of base) deck.push(r === 0 ? p : { ...p, id: `g${n++}` });
   return shuf(deck);
