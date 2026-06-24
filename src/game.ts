@@ -37,7 +37,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/turn; in round 1 only it ramps UP by play order (start player least) to offset first-mover advantage
-  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
@@ -548,7 +548,7 @@ const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR i
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
 const POOL_SIZE = 8;   // open research questions on the board at once
-export const publishCost = (pubs: number) => Math.min(4, 1 + Math.floor(Math.max(0, pubs) / PUBLISH_STEP));   // each successive publish costs more AP (capped at 4) — a volume leader self-handicaps
+export const publishCost = (_pubs: number) => START_AP;   // publishing takes a WHOLE TURN — needs a full turn's AP and consumes it all (≤ 1 publish/turn)
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
 export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
@@ -613,7 +613,7 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
   if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier) — cost rises with publish count
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
   const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the open pool — anyone's stashed cards are fair game
-  p.ap -= apCost;
+  p.ap = 0;   // publishing consumes the whole turn
   const used = res.ownedIdx.map(i => pool[i]);
   res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => pool.splice(i, 1));   // consume the used cards from the SHARED pool
   p.published.push(...used);                                          // → your published pool (public record)
