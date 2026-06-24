@@ -37,7 +37,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/turn; in round 1 only it ramps UP by play order (start player least) to offset first-mover advantage
-  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile
+  COLORS = 3, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
@@ -48,9 +48,12 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
+export const BAL = { wander: true, seasonBenign: 20 };   // wander = rotating start player; seasonBenign = benign event cards (≈ field-season length in rounds, +4 monsoon tail)
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
-export const catDC = (color: number) => CATALOGUE_DC + color;   // difficulty = colour tier: the number on a discovery (red 0 … violet 3) IS its catalogue DC (6–9)
+// catalogue difficulty by colour tier — bare 2d6 success: easy ~83%, mid ~42%, hard 0% (needs gear). Gear/specialist bonuses push the hard ones over.
+const COL_DC = [5, 8, 13];   // 🟪 easy · ⬜ mid · 🟦 hard
+export const catDC = (color: number) => COL_DC[color] ?? 8;
 const gearTag = (g: GearItem) => g.kind === 'field' ? `${g.field} kit` : g.kind;   // log label for a gear kit
 const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more gear piece (discoveries are uncapped)
 
@@ -548,7 +551,7 @@ const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR i
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
 const POOL_SIZE = 8;   // open research questions on the board at once
-export const publishCost = (_pubs: number) => START_AP;   // publishing takes a WHOLE TURN — needs a full turn's AP and consumes it all (≤ 1 publish/turn)
+export const publishCost = (_pubs: number) => 0;   // EXPERIMENT: publishing is free (0 AP)
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
 export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
@@ -574,7 +577,8 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   const colors = Array.from({ length: COLORS }, (_, i) => i);
   const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   // reward = a size-based base + a premium for the RARITY of the components a hand demands (discipline rarity + colour difficulty)
-  let n = 0; const cardRarity = (p: GoalPart) => (p.type ? DISC_RARITY[p.type] : 0) + (p.color ?? 0);
+  const COL_DIFF = [0, 1, 3];   // reward premium by colour difficulty (easy/mid/hard) — hard finds are gear-gated, so worth far more
+  let n = 0; const cardRarity = (p: GoalPart) => (p.type ? DISC_RARITY[p.type] : 0) + (p.color !== undefined ? COL_DIFF[p.color] : 0);
   const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => {
     const rarity = parts.reduce((s, pt) => s + pt.count * cardRarity(pt), 0);
     return { id: `g${n++}`, label, parts, prestige: prestige + Math.round(rarity * RARITY_K), money };
@@ -613,7 +617,7 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
   if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier) — cost rises with publish count
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
   const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the open pool — anyone's stashed cards are fair game
-  p.ap = 0;   // publishing consumes the whole turn
+  p.ap -= apCost;   // free (0 AP) under the current experiment
   const used = res.ownedIdx.map(i => pool[i]);
   res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => pool.splice(i, 1));   // consume the used cards from the SHARED pool
   p.published.push(...used);                                          // → your published pool (public record)
@@ -754,9 +758,10 @@ export const enumerate = (G: GState, ctx: any) => {
 
 // ---- event deck: mostly benign; monsoon stacked at the BOTTOM = telegraphed end ----
 function buildDeck(seed: number): string[] {
-  // ONE event drawn per ROUND now (not per turn), so the deck is sized in rounds: ~10 benign + monsoons → ~14-round field season
-  const top = [...Array(3).fill('tailwind'), ...Array(2).fill('cache'), ...Array(1).fill('grant'),
-    ...Array(2).fill('calm'), ...Array(1).fill('rockslide'), ...Array(1).fill('washout')];  // 10 benign+hazard
+  // ONE event drawn per ROUND: the benign deck is sized in rounds (BAL.seasonBenign) + a 6-monsoon tail; field ends as monsoons surface
+  const mix: [string, number][] = [['tailwind', 0.3], ['cache', 0.2], ['grant', 0.1], ['calm', 0.2], ['rockslide', 0.1], ['washout', 0.1]];
+  const top: string[] = [];
+  for (const [id, frac] of mix) for (let k = 0; k < Math.round(BAL.seasonBenign * frac); k++) top.push(id);
   let z = seed >>> 0; const rnd = () => (z = (z * 1664525 + 1013904223) >>> 0) / 2 ** 32;
   for (let i = top.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [top[i], top[j]] = [top[j], top[i]]; }
   return [...top, ...Array(6).fill('monsoon')];                       // drawn last (field ends when the MONSOON_END-th monsoon surfaces)
@@ -844,7 +849,8 @@ export const Expedition: Game<GState> = {
       // lab season: a fixed, fair order — P0 always opens, P{N-1} always closes (driven by labLeft so the frontier-merge target is deterministic).
       next: ({ G, ctx }: any) => {
         if (G.epilogue) return (ctx.numPlayers - G.labLeft) % ctx.numPlayers;
-        const N = ctx.numPlayers, k = ctx.turn; return (Math.floor(k / N) + (k % N)) % N;
+        const N = ctx.numPlayers, k = ctx.turn;
+        return BAL.wander ? (Math.floor(k / N) + (k % N)) % N : k % N;   // wander: rotating start; else fixed P0-first round-robin
       },
     },
     onEnd: ({ G, ctx }) => {
