@@ -546,8 +546,7 @@ const pickup: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   
 const DTYPES: DType[] = ['geo', 'zoo', 'bot', 'arch'];
 // discipline rarity (≈ inverse of measured supply: arch most abundant 0 · geo/zoo mid 1 · bot rarest 2) — feeds the rarity-skewed payout
 const DISC_RARITY: Record<DType, number> = { arch: 0, geo: 2, zoo: 1, bot: 2 };   // minerals (geo) are scarce → premium payout, on par with botany
-const RARITY_K = 0.45;   // prestige premium per unit of component rarity (discipline rarity + colour difficulty)
-const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR in render)
+const COL_NAME = ['purple', 'grey', 'navy'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
 const POOL_SIZE = 5;   // open research questions on the board at once (refilled from the deck on each publish)
@@ -576,29 +575,32 @@ function assemble(G: GState, id: string, owned: Discovery[], citable: Discovery[
 function buildGoalDeck(rand: () => number): Pattern[] {
   const colors = Array.from({ length: COLORS }, (_, i) => i);
   const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  // reward = a size-based base + a premium for the RARITY of the components a hand demands (discipline rarity + colour difficulty)
-  const COL_DIFF = [0, 1, 3];   // reward premium by colour difficulty (easy/mid/hard) — hard finds are gear-gated, so worth far more
-  let n = 0; const cardRarity = (p: GoalPart) => (p.type ? DISC_RARITY[p.type] : 0) + (p.color !== undefined ? COL_DIFF[p.color] : 0);
-  const mk = (label: string, parts: GoalPart[], prestige: number, money: number): Pattern => {
-    const rarity = parts.reduce((s, pt) => s + pt.count * cardRarity(pt), 0);
-    return { id: `g${n++}`, label, parts, prestige: prestige + Math.round(rarity * RARITY_K), money };
+  // PAYOUT matches difficulty + statistics: each card costs 1 + discipline rarity + colour difficulty; reward scales with the project's summed difficulty
+  const COL_DIFF = [0, 2, 5];   // colour difficulty premium (easy/mid/hard) — tracks the catalogue DCs 5/8/13 (hard is gear-gated)
+  const cardCost = (p: GoalPart) => 1 + (p.type ? DISC_RARITY[p.type] : 0) + (p.color !== undefined ? COL_DIFF[p.color] : 0);
+  const PRESTIGE_K = 0.4, MONEY_K = 0.25;
+  let n = 0;
+  const mk = (label: string, parts: GoalPart[]): Pattern => {
+    const diff = parts.reduce((s, pt) => s + pt.count * cardCost(pt), 0);
+    return { id: `g${n++}`, label, parts, prestige: Math.max(1, Math.round(diff * PRESTIGE_K)), money: Math.max(1, Math.round(diff * MONEY_K)) };
   };
-  // ALL potential hands (every discipline/colour combo) — payout is what separates the common from the rare
   const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
   const ordered = DTYPES.flatMap(a => DTYPES.filter(b => b !== a).map(b => [a, b] as [DType, DType]));   // ordered pairs (full house a-over-b)
   const deck: Pattern[] = [
-    // PAIRS — the common, entry-level options (2 matching by symbol or by colour); several copies so they recur in the pool
-    ...Array.from({ length: 4 }).flatMap(() => DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }], 2, 1))),
-    ...Array.from({ length: 4 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }], 2, 1))),
-    ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }], 4, 1)),
-    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }], 4, 1)),
-    ...pairs.map(([a, b]) => mk(`${a} + ${b} two pair`, [{ count: 2, type: a }, { count: 2, type: b }], 4, 1)),
-    ...ordered.map(([a, b]) => mk(`${a} full house over ${b}`, [{ count: 3, type: a }, { count: 2, type: b }], 6, 2)),
-    ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }], 7, 2)),
-    ...colors.map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }], 6, 2)),
-    ...DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} triple`, [{ count: 3, type: t, color: c }], 5, 2))),   // both-axes
-    mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t })), 4, 1),
-    mk('colour straight', colors.map(c => ({ count: 1, color: c })), 3, 1),
+    // COMMON entry-level options (several copies so they recur in the 5-slot pool): symbol pairs, colour pairs, colour+symbol pair combos, triples
+    ...Array.from({ length: 4 }).flatMap(() => DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }]))),
+    ...Array.from({ length: 4 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }]))),
+    ...Array.from({ length: 2 }).flatMap(() => DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} pair combo`, [{ count: 2, color: c }, { count: 2, type: t }])))),
+    ...Array.from({ length: 3 }).flatMap(() => DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }]))),
+    ...Array.from({ length: 3 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }]))),
+    // rarer, higher-paying hands
+    ...pairs.map(([a, b]) => mk(`${a} + ${b} two pair`, [{ count: 2, type: a }, { count: 2, type: b }])),
+    ...ordered.map(([a, b]) => mk(`${a} full house over ${b}`, [{ count: 3, type: a }, { count: 2, type: b }])),
+    ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }])),
+    ...colors.map(c => mk(`${COL_NAME[c]} flush`, [{ count: 5, color: c }])),
+    ...DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} triple`, [{ count: 3, type: t, color: c }]))),   // both-axes
+    mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t }))),
+    mk('colour straight', colors.map(c => ({ count: 1, color: c }))),
   ];
   return shuf(deck);
 }
