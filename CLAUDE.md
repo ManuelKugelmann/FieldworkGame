@@ -69,4 +69,5 @@ Shipped in three verified commits: **(1)** brooks + `blocked`/cliffs + render + 
 - Keep it **serverless/static** — no server-authoritative multiplayer without discussion.
 - Preserve the **dry/wet validation split** and the **load-bearing centre road bridge**.
 - Every rules change must keep `smoke` green and `sweep` scores sane.
+- **Each match must be fair on its own** — a fixed seat/role must not have a structural edge *within a single game*. **Do NOT hide a balance bug by randomizing it across matches** (e.g. shuffling who starts, who opens the lab, or which role a seat gets). Per-match randomization only spreads an unfair advantage around so it averages out in aggregate stats — the imbalance is still there in every game. Diagnose and fix the structural cause (measure per-seat *within-match*: field vs lab VP, win spread), don't paper over it with a shuffle.
 - Child- and content-safety, licensing: original work only; no copyrighted board-game assets/text.
