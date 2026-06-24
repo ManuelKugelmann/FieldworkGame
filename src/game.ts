@@ -550,7 +550,7 @@ const RARITY_K = 0.45;   // prestige premium per unit of component rarity (disci
 const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
-const POOL_SIZE = 8;   // open research questions on the board at once
+const POOL_SIZE = 5;   // open research questions on the board at once (refilled from the deck on each publish)
 export const publishCost = (_pubs: number) => 0;   // EXPERIMENT: publishing is free (0 AP)
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
@@ -654,15 +654,16 @@ const goalCells = (G: GState, goal: (t: Tile) => boolean) => { const a: number[]
 const nearestDist = (cells: number[], from: number) => cells.reduce((m, c) => Math.min(m, manhattan(from, c)), Infinity);
 // car: board a co-located idle car / drive to the road cell nearest the goal / dismount once roads stop helping
 function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: unknown[] } | null {
-  const p = G.players[ctx.currentPlayer]; if (p.ap < 1 || !goals.length) return null;
+  const p = G.players[ctx.currentPlayer]; if (!goals.length) return null;
   const here = nearestDist(goals, p.pos);
   const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer && v.kind === 'car');   // the heuristic only drives ground cars (motorboats are a human tool)
-  if (myCar) {                                                          // driving → hop to the best closer road cell, else step out (so foot moves are possible again)
+  if (myCar) {                                                          // driving → ALWAYS drive or leave (never fall through to a foot move while behind the wheel)
+    if (p.ap <= 0) return { move: 'leave', args: [] };                 // out of AP → step out so foot moves are possible next turn
     let best = -1, bd = here;
-    for (const c of roadReach(G.map, myCar.pos, CAR_STEPS)) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
+    for (const c of roadReach(G.map, myCar.pos, Math.floor(p.ap * CAR_STEPS))) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
     return best >= 0 ? { move: 'drive', args: [best] } : { move: 'leave', args: [] };
   }
-  if (here < 3) return null;   // on foot: only bother boarding when the goal is far enough that roads save real distance
+  if (p.ap < 1 || here < 3) return null;   // on foot: only bother boarding when affordable and the goal is far enough that roads save real distance
   const vi = p.money >= BOARD_COST ? G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && v.kind === 'car') : -1;   // parked car underfoot → board if roads lead closer (and the fee is affordable)
   if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
   return null;
