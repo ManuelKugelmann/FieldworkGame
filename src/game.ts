@@ -37,7 +37,7 @@ export interface GState {
 
 let N = 10;                  // grid dimension (square), chosen per-match in [10..15]
 const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/turn; in round 1 only it ramps UP by play order (start player least) to offset first-mover advantage
-  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, PUBLISH_STEP = 2, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // MAX_CITE 0 = no citation  // PUBLISH_STEP: publish AP cost = 1 + floor(pubCount/STEP)
+  COLORS = 3, CATALOGUE_DC = 6, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile  // discoveries are UNLIMITED in hand (the rush back to base is driven by the first-come-first-serve research pool, not a carry cap)  // GEAR_MAX = max gear pieces carried (gear has its own cap, separate from discoveries)  // FIELD_BONUS: a field kit's catalogue bonus (its discipline only)  // MAX_CITE 0 = no citation
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
 export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
@@ -469,12 +469,11 @@ function reveal(G: GState, t: number, random: any, cur: string, from: number) {
 const myVehicle = (G: GState, id: string) => G.vehicles.find(v => v.driver === id);
 const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || !nbrs(p.pos).includes(t)) return INVALID_MOVE;
+  if (G.epilogue || myVehicle(G, ctx.currentPlayer) || !nbrs(p.pos).includes(t)) return INVALID_MOVE;   // must explicitly `leave` the car/boat before a foot move
   const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t);   // boating opens water + cheap brooks
   if (!ok) return INVALID_MOVE;
   const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t);
   if (p.ap < c) return INVALID_MOVE;
-  const car = myVehicle(G, ctx.currentPlayer); if (car) car.driver = null;   // step out on foot — car stays put
   const from = p.pos; p.ap -= c; p.pos = t; reveal(G, t, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
   G.log.push(`Player ${+ctx.currentPlayer + 1} → ${t} (-${c}ap${p.boat ? ' 🛶' : ''})`);
 };
@@ -549,7 +548,7 @@ const COL_NAME = ['green', 'blue', 'yellow'];   // the 3 colours (match DCOLOR i
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
 const POOL_SIZE = 8;   // open research questions on the board at once
-export const publishCost = (pubs: number) => Math.min(4, 1 + Math.floor(Math.max(0, pubs) / PUBLISH_STEP));   // each successive publish costs more AP (capped at 4 = one full turn) → maximise value per publish; a volume-leader self-handicaps but is never fully locked out
+export const publishCost = (_pubs: number) => 1;   // flat 1 AP per publish (no ramp)
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
 export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
@@ -653,13 +652,13 @@ const nearestDist = (cells: number[], from: number) => cells.reduce((m, c) => Ma
 function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: unknown[] } | null {
   const p = G.players[ctx.currentPlayer]; if (p.ap < 1 || !goals.length) return null;
   const here = nearestDist(goals, p.pos);
-  if (here < 3) return null;   // only bother with the car when the goal is far enough that roads save real distance
   const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer && v.kind === 'car');   // the heuristic only drives ground cars (motorboats are a human tool)
-  if (myCar) {                                                          // driving → hop to the best closer road cell, else step out
+  if (myCar) {                                                          // driving → hop to the best closer road cell, else step out (so foot moves are possible again)
     let best = -1, bd = here;
     for (const c of roadReach(G.map, myCar.pos, CAR_STEPS)) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
     return best >= 0 ? { move: 'drive', args: [best] } : { move: 'leave', args: [] };
   }
+  if (here < 3) return null;   // on foot: only bother boarding when the goal is far enough that roads save real distance
   const vi = p.money >= BOARD_COST ? G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && v.kind === 'car') : -1;   // parked car underfoot → board if roads lead closer (and the fee is affordable)
   if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
   return null;
@@ -729,7 +728,7 @@ export const enumerate = (G: GState, ctx: any) => {
   const p = G.players[ctx.currentPlayer], out: any[] = [], tile = G.map[p.pos];
   if (!G.epilogue) {                                                  // field season
     const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
-    nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });
+    if (!myCar) nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });   // foot moves only when NOT driving (must leave first)
     if (p.ap > 0 && myCar) (myCar.kind === 'motorboat' ? riverReach(G.map, myCar.pos, Math.floor(p.ap * MOTORBOAT_STEPS)) : roadReach(G.map, myCar.pos, Math.floor(p.ap * CAR_STEPS))).forEach(d => out.push({ move: 'drive', args: [d] }));
     if (p.ap > 0 && p.boat) riverReach(G.map, p.pos, Math.floor(p.ap * BOAT_STEPS)).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
     if (p.money >= BOARD_COST) G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });

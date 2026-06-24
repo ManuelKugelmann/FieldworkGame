@@ -49,10 +49,10 @@ const hash01 = (i: number, k: number) => { let h = (Math.imul(i + 1, 2654435761)
 export const DTYPE_COLOR: Record<Discovery['type'], string> = { geo: '#4ab0ff', zoo: '#ff4444', bot: '#57e466', arch: '#ffd24a' };   // discipline colours (= player colours): geo blue · zoo red · bot green · arch yellow
 export const DTYPE_SYMBOL: Record<Discovery['type'], string> = { geo: '💎', zoo: '🐾', bot: '🌿', arch: '🏺' };   // type icon — used everywhere instead of the geo/zoo/bot/arch words
 const isDType = (s: string): s is Discovery['type'] => s === 'geo' || s === 'zoo' || s === 'bot' || s === 'arch';
-export const prettyFind = (d: Discovery) => `${DTYPE_SYMBOL[d.type]}${d.color}`;                     // e.g. 💎3
+export const prettyFind = (d: Discovery) => `${DTYPE_SYMBOL[d.type]}${COL_SQUARE[d.color]}`;          // e.g. 💎🟪 (discipline icon + colour square)
 const prettyTag = (tag: string) => { const m = tag.match(/^([a-z]+)(\d+)$/); return m && isDType(m[1]) ? DTYPE_SYMBOL[m[1]] + m[2] : tag; };   // "geo3" → "💎3"
 export const prettyLog = (line: string) => line.replace(/\b(geo|zoo|bot|arch)(\d)/g, (_m, t, c) => DTYPE_SYMBOL[t as Discovery['type']] + c);   // swap type words for icons in a log line
-const COL_SQUARE = ['🟩', '🟦', '🟨'];   // the 3 discovery colours as squares (green blue yellow)
+const COL_SQUARE = ['🟪', '⬜', '🟦'];   // the 3 discovery colours as squares (purple · grey · navy)
 // compact iconic project label: e.g. "3 💎", "2 💎 + 2 🐾", "5 🟥" (no "of a kind" prose)
 export const goalLabel = (g: Pattern) => g.parts.map(p => `${p.count} ${p.type ? DTYPE_SYMBOL[p.type] : ''}${p.color !== undefined ? COL_SQUARE[p.color] : ''}`).join(' + ');
 // specialist badge: discipline icon + name, tinted by the discipline (= player) colour so the badge matches the player
@@ -170,8 +170,10 @@ export function describeTile(G: GState, i: number): string {
   return bits.join(' · ');
 }
 
+// a discovery chip = discipline icon on its colour-axis background, matching the research-option tokens
+const discChip = (d: Discovery, extra = '') => `<span class="chip" style="background:${DCOLOR[d.color]};color:#fff${extra}">${DTYPE_SYMBOL[d.type]}</span>`;
 export function sampleChips(ds: Discovery[]): string {
-  return ds.map(d => `<span class="chip" style="color:${DTYPE_COLOR[d.type]}">${prettyFind(d)}</span>`).join('');
+  return ds.map(d => discChip(d)).join('');
 }
 // gear kit icons (public — opponents see your gear). lab-bench symbols by tier; 🧪 + discipline = field kit
 export const GEAR_GLYPH: Record<string, string> = { g1: '🔬', g2: '🔬', g3: '🔬' };   // all generic gear shares the microscope icon; the coloured +X conveys strength
@@ -192,7 +194,7 @@ export const emptySlots = (n: number) => '<span class="slot empty"></span>'.repe
 // your own hand, but each chip is clickable to DROP it (leaves it face-up on your tile)
 export function handChips(ds: Discovery[]): string {
   if (!ds.length) return '<span style="opacity:.5">none</span>';
-  return ds.map((d, i) => `<span class="chip clk" data-discard="${i}" title="drop — leaves it here, face-up for anyone" style="color:${DTYPE_COLOR[d.type]};cursor:pointer">${prettyFind(d)}</span>`).join('');
+  return ds.map((d, i) => `<span class="chip clk" data-discard="${i}" title="drop — leaves it here, face-up for anyone" style="background:${DCOLOR[d.color]};color:#fff;cursor:pointer">${DTYPE_SYMBOL[d.type]}</span>`).join('');
 }
 // opponents see only the DISCIPLINE of your specimens, not the colour (a concealed poker hand)
 export function maskedChips(ds: Discovery[]): string {
@@ -201,7 +203,7 @@ export function maskedChips(ds: Discovery[]): string {
 
 // ---- publish planner: the shared pool of open research projects + how close the current player is ----
 // Each project pins concrete values; discipline = icon, colour = swatch (both for both-axes projects). evalGoal() (in game.ts) is the single source of truth.
-export const DCOLOR = ['#36a85a', '#3f86d8', '#e0c23a'];   // the 3 discovery colours: green · blue · yellow
+export const DCOLOR = ['#9b5de5', '#8b93a3', '#2e4272'];   // the 3 discovery colours: purple · grey · navy
 export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; swatch?: string; }   // have = carried · cite = fillable from others' published · need = missing
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; threat: 'imminent' | 'building' | 'hidden' | 'none'; }
 
@@ -298,7 +300,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
   }
 
   // 2) movement graph as CURVED links (bends round off): river channel under roads, then footpaths + brooks; cliffs as dark in-tile bands
-  linkLayer(cctx, G, t => t.rivers, RIVER_LINE, 3, []);
+  linkLayer(cctx, G, t => t.rivers, RIVER_LINE, CELL * 0.85, []);   // wide river channel — fills ~85% of the tile
   linkLayer(cctx, G, t => t.roads, '#9a8757', 3, []);
   linkLayer(cctx, G, t => t.paths, '#84a684', 1.5, [3, 3]);
   linkLayer(cctx, G, t => t.smallRivers, BROOK_LINE, 2, [2, 2]);
@@ -366,8 +368,8 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     const shadow = () => { cctx.shadowColor = 'rgba(0,0,0,0.5)'; cctx.shadowBlur = CELL * 0.09; cctx.shadowOffsetY = CELL * 0.03; };
     if (t.revealed && t.finds.length) {   // FLIPPED face-up on entry: the real discovery — type colour, rimmed in its discovery colour, with the type icon
       const f = t.finds[0];
-      cctx.save(); shadow(); cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.22, 0, 7); cctx.fillStyle = DTYPE_COLOR[f.type]; cctx.fill(); cctx.restore();
-      cctx.lineWidth = Math.max(2, CELL * 0.06); cctx.strokeStyle = DCOLOR[f.color]; cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.22, 0, 7); cctx.stroke();   // colour-axis rim
+      cctx.save(); shadow(); cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.22, 0, 7); cctx.fillStyle = DCOLOR[f.color]; cctx.fill(); cctx.restore();   // colour-axis background, like the research-option cards
+      cctx.lineWidth = Math.max(2, CELL * 0.05); cctx.strokeStyle = 'rgba(0,0,0,0.55)'; cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.22, 0, 7); cctx.stroke();
       if (CELL >= 20) { cctx.font = `${CELL * 0.26}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[f.type], cx0, cy0 + 0.5); }
     } else if (!t.revealed && t.richness > 0 && !t.roads && !t.hotspot) {   // BACK-SIDE: an un-entered discovery — only where a find can actually appear (not roads/special locations)
       cctx.save(); shadow(); cctx.beginPath(); cctx.arc(cx0, cy0, CELL * 0.2, 0, 7); cctx.fillStyle = BIOME_POOL[t.terrain] ?? GRAY_BIOME[t.terrain]; cctx.fill(); cctx.restore();
@@ -376,7 +378,7 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     t.cache.forEach((dc, k) => {   // DROPPED discoveries / research-pool cards: corners, white-ringed
       if (k >= 4) return;
       const sx = corners[k][0], sy = corners[k][1];
-      cctx.fillStyle = DTYPE_COLOR[dc.type];
+      cctx.fillStyle = DCOLOR[dc.color];   // colour-axis background, like the research cards
       cctx.beginPath(); cctx.arc(sx, sy, rrBig, 0, 7); cctx.fill();
       cctx.lineWidth = 1.5; cctx.strokeStyle = '#e8f0e2'; cctx.stroke();
       if (CELL >= 22) { cctx.font = `${rrBig * 1.7}px ${EMOJI_FONT}`; cctx.fillText(DTYPE_SYMBOL[dc.type], sx, sy + 0.5); }
