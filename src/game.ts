@@ -48,7 +48,7 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
-export const BAL = { wander: true, seasonBenign: 26, round0Ramp: false };   // wander = rotating start player; seasonBenign ≈ field-season rounds (+4 monsoon tail) → ~30 rounds; round0Ramp = handicap the round-1 opener's AP
+export const BAL = { wander: true, seasonBenign: 26, round0Ramp: false, labInverse: false };   // wander = rotating start; seasonBenign ≈ field rounds; round0Ramp = handicap round-1 opener; labInverse = lab publishes in REVERSE seat order (P{N-1} first)
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 // catalogue difficulty by colour tier — bare 2d6 success: easy ~83%, mid ~42%, hard 0% (needs gear). Gear/specialist bonuses push the hard ones over.
@@ -862,7 +862,7 @@ export const Expedition: Game<GState> = {
       // field season: wandering start player (each round begins with a different player) so the first-mover advantage rotates.
       // lab season: a fixed, fair order — P0 always opens, P{N-1} always closes (driven by labLeft so the frontier-merge target is deterministic).
       next: ({ G, ctx }: any) => {
-        if (G.epilogue) return (ctx.numPlayers - G.labLeft) % ctx.numPlayers;
+        if (G.epilogue) return BAL.labInverse ? (G.labLeft - 1) : (ctx.numPlayers - G.labLeft) % ctx.numPlayers;   // normal: P0 first; inverse: P{N-1} first
         const N = ctx.numPlayers, k = ctx.turn;
         return BAL.wander ? (Math.floor(k / N) + (k % N)) % N : k % N;   // wander: rotating start; else fixed P0-first round-robin
       },
