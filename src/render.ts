@@ -213,15 +213,16 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 
   const opps = Object.keys(G.players).filter(id => id !== pid);
-  return G.goals.map((goal: Pattern) => {
+  // the combo TABLE is large — show what you can publish NOW (by value), plus a few you're closest to
+  const all = G.goals.map((goal: Pattern) => {
     const r = evalGoal(goal, owned, citable);
     const cells: PatternCell[] = r.slots.map(s => ({
       state: s.state,
       icon: s.type !== undefined ? DTYPE_SYMBOL[s.type] : undefined,
       swatch: s.color !== undefined ? DCOLOR[s.color] : undefined,
     }));
-    // contention read — fair: only uses PUBLIC info. Discipline-only goals are readable from rivals' visible disciplines; any colour pin is unreadable (a blind snipe).
     const need = goal.parts.reduce((s, p) => s + p.count, 0);
+    const have = r.slots.filter(s => s.state === 'have').length;
     const discOnly = goal.parts.every(p => p.color === undefined);
     let threat: PatternPreview['threat'] = discOnly ? 'none' : 'hidden';
     if (discOnly) for (const oid of opps) {
@@ -229,8 +230,12 @@ export function publishPreviews(G: GState, pid: string): PatternPreview[] {
       if (er.ok) { threat = 'imminent'; break; }
       if (er.slots.filter(s => s.state === 'have').length >= Math.ceil(need * 0.6)) threat = 'building';
     }
-    return { name: goal.id, label: goalLabel(goal), reward: `+${goal.prestige}🎓 +${money$(goal.money)}`, cells, ready: r.ok, threat };
+    const preview: PatternPreview = { name: goal.id, label: goalLabel(goal), reward: `+${goal.prestige}🎓 +${money$(goal.money)}`, cells, ready: r.ok, threat };
+    return { preview, prestige: goal.prestige, have, ready: r.ok };
   });
+  const ready = all.filter(x => x.ready).sort((a, b) => b.prestige - a.prestige);
+  const close = all.filter(x => !x.ready).sort((a, b) => (b.have - a.have) || (b.prestige - a.prestige)).slice(0, 5);
+  return [...ready, ...close].slice(0, 12).map(x => x.preview);
 }
 
 // draw a link network as CURVED paths: per tile, connect its linked edge-midpoints through the centre

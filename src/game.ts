@@ -549,7 +549,6 @@ const DISC_RARITY: Record<DType, number> = { arch: 0, geo: 2, zoo: 1, bot: 2 }; 
 const COL_NAME = ['purple', 'grey', 'navy'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
-const POOL_SIZE = 5;   // open research questions on the board at once (refilled from the deck on each publish)
 export const publishCost = (_pubs: number) => 0;   // EXPERIMENT: publishing is free (0 AP)
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
@@ -572,9 +571,8 @@ function assemble(G: GState, id: string, owned: Discovery[], citable: Discovery[
   const r = evalGoal(pat, owned, citable); return r.ok ? { ownedIdx: r.ownedIdx, cited: r.cited } : null;
 }
 // build the per-match project DECK: concrete poker hands with pinned values (shuffled). The pool is dealt from the top, refilled on claim.
-function buildGoalDeck(rand: () => number): Pattern[] {
+function buildGoalDeck(_rand: () => number): Pattern[] {
   const colors = Array.from({ length: COLORS }, (_, i) => i);
-  const shuf = <T>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   // PAYOUT = difficulty × rarity × combo: each card's value = colour difficulty × discipline rarity; the project scales that by its combo size (bigger matching sets cost super-linearly)
   const cdiff = [1, 2, 5];   // colour difficulty (multiplicative; no-colour part = 1) — tracks the catalogue DCs 5/8/13
   const cardVal = (p: GoalPart) => (p.color !== undefined ? cdiff[p.color] : 1) * (1 + (p.type ? DISC_RARITY[p.type] : 0));
@@ -587,15 +585,16 @@ function buildGoalDeck(rand: () => number): Pattern[] {
   };
   const pairs = DTYPES.flatMap((a, i) => DTYPES.slice(i + 1).map(b => [a, b] as [DType, DType]));   // unordered discipline pairs
   const ordered = DTYPES.flatMap(a => DTYPES.filter(b => b !== a).map(b => [a, b] as [DType, DType]));   // ordered pairs (full house a-over-b)
-  const deck: Pattern[] = [
-    // COMMON entry-level options (several copies so they recur in the 5-slot pool): symbol pairs, colour pairs, colour+symbol pair combos, triples
-    ...Array.from({ length: 4 }).flatMap(() => DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }]))),
-    ...Array.from({ length: 4 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }]))),
-    ...Array.from({ length: 2 }).flatMap(() => DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} pair`, [{ count: 2, type: t, color: c }])))),   // coloured symbol pairs (both axes pinned)
-    ...Array.from({ length: 2 }).flatMap(() => DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} pair combo`, [{ count: 2, color: c }, { count: 2, type: t }])))),
-    ...Array.from({ length: 3 }).flatMap(() => DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }]))),
-    ...Array.from({ length: 3 }).flatMap(() => colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }]))),
-    // rarer, higher-paying hands
+  // table: every DISTINCT combo is ALWAYS available to publish (no deck, no open-5 slots, no claiming) — one entry each
+  return [
+    // entry-level: symbol pairs, colour pairs, colour+symbol pairs, pair combos, triples
+    ...DTYPES.map(t => mk(`${t} pair`, [{ count: 2, type: t }])),
+    ...colors.map(c => mk(`${COL_NAME[c]} pair`, [{ count: 2, color: c }])),
+    ...DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} pair`, [{ count: 2, type: t, color: c }]))),   // coloured symbol pairs (both axes pinned)
+    ...DTYPES.flatMap(t => colors.map(c => mk(`${COL_NAME[c]} ${t} pair combo`, [{ count: 2, color: c }, { count: 2, type: t }]))),
+    ...DTYPES.map(t => mk(`${t} three of a kind`, [{ count: 3, type: t }])),
+    ...colors.map(c => mk(`${COL_NAME[c]} triple`, [{ count: 3, color: c }])),
+    // higher-paying hands
     ...pairs.map(([a, b]) => mk(`${a} + ${b} two pair`, [{ count: 2, type: a }, { count: 2, type: b }])),
     ...ordered.map(([a, b]) => mk(`${a} full house over ${b}`, [{ count: 3, type: a }, { count: 2, type: b }])),
     ...DTYPES.map(t => mk(`${t} four of a kind`, [{ count: 4, type: t }])),
@@ -604,8 +603,6 @@ function buildGoalDeck(rand: () => number): Pattern[] {
     mk('discipline straight', DTYPES.map(t => ({ count: 1, type: t }))),
     mk('colour straight', colors.map(c => ({ count: 1, color: c }))),
   ];
-  // ~136 distinct patterns → ~131 refill options vs a measured MAX of 17 publishes/game — a 7× buffer, so no replication needed and the plain refill never runs dry
-  return shuf(deck);
 }
 const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; for (const id in G.players) if (id !== self) out.push(...G.players[id].published); return out; };
 
@@ -631,8 +628,7 @@ const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // researc
   p.published.push(...used);                                          // → your published pool (public record)
   p.prestige += pat.prestige; p.money += pat.money; p.pubs += 1;     // research token → prestige; bump publish count (raises next publish's AP cost)
   G.log.push(`publish ${pat.label} +${pat.prestige}P +${pat.money}$`);
-  const gi = G.goals.findIndex(x => x.id === pat.id);                // CLAIM the question: remove it and refill the open pool from the (large) deck
-  if (gi >= 0) { G.goals.splice(gi, 1); if (G.goalDeck.length) G.goals.push(G.goalDeck.shift()!); }
+  // the combo stays in the table (always available) — only the shared CARDS are consumed
 };
 
 
@@ -824,7 +820,7 @@ export const Expedition: Game<GState> = {
       map, cols: N, rows: N, base: start,
       vehicles,
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand), water: buildPool('water', colorRand) },
-      ...(() => { const deck = buildGoalDeck(prng((seed ^ 0x9e3779b1) >>> 0)); return { goals: deck.slice(0, POOL_SIZE), goalDeck: deck.slice(POOL_SIZE) }; })(),   // deal the open-question pool; rest is the refill deck
+      goals: buildGoalDeck(prng((seed ^ 0x9e3779b1) >>> 0)), goalDeck: [],   // the full TABLE of combos — all always available to publish
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'], roundEvent: '',
     };
   },
