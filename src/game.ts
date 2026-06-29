@@ -395,6 +395,7 @@ function validate(g: Tile[], bridges: number[]): string | null {
   const rd = compRoad(g);
   if (rd.c !== 1) return 'orphan-road';
   if (!rd.cells.includes(bridges[0])) return 'road-not-attached-to-centre';
+  if (g[bridges[0]].hotspot) return 'hotspot-on-road-bridge';   // no location may be colocated with the centre road bridge (foot bridges still host river villages)
   const hs = g.map(t => t.hotspot).filter(Boolean);
   if (!hs.includes('base') || !hs.includes('village') || !hs.includes('remote')) return 'hotspots';
   return null;
@@ -410,7 +411,7 @@ function placeHotspots(g: Tile[], base: number): boolean {       // hubs must si
   g[base].hotspot = 'base';                                        // main hub — on the road
   const free = (i: number | undefined) => i !== undefined && !g[i].hotspot;
   const byFar = (arr: number[]) => arr.slice().sort((a, b) => dist(b, base) - dist(a, base));
-  const rds = roads.filter(i => i !== base);                       // market sits MID-road, not at the far end
+  const rds = roads.filter(i => i !== base && !g[i].bridge);        // market sits MID-road, not at the far end — and never ON the centre road bridge (no hotspot may share a bridge tile)
   const maxD = Math.max(0, ...rds.map(i => dist(i, base))), mid = maxD / 2;
   const village = rds.slice().sort((a, b) => Math.abs(dist(a, base) - mid) - Math.abs(dist(b, base) - mid))[0];
   if (free(village)) g[village].hotspot = 'village';              // road market, near the middle of the road
