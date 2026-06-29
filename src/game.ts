@@ -722,7 +722,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     return { move: 'catalogue', args: [bestI] };
   }
   const variant = BOTCFG.variant[+ctx.currentPlayer] || '';   // strategy variant (head-to-head exploration only)
-  const minPub = variant === 'greedy' ? 1 : 3;                // DEFAULT = hold: build a ≥3-prestige combo before heading to base (strongest play, +~1.4 VP over greedy). 'greedy' publishes any colour+symbol pair
+  const minPub = (variant === 'greedy' || variant === 'ev') ? 1 : 3;   // DEFAULT = hold (build ≥3-prestige before publishing). 'greedy'/'ev' publish any combo (ev skips un-catalogueable finds, so it needs to bootstrap money→gear)
   const hasHand = G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile project → head to a base to publish; else forage
   const goalPred = hasHand ? isResearch
     : variant === 'ev' ? ((t: Tile) => tileForageValue(G, p, cit, t) > 0)   // 'ev': forage toward the nearest VALUABLE find (cataloguable for me AND advances a combo) — skips worthless finds; nearest keeps it stable (no target oscillation)
