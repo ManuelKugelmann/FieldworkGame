@@ -40,7 +40,8 @@ const DIM_MIN = 10, DIM_MAX = 18, ACTIVE_TILES = 200, START_AP = 4,  // 4 AP/tur
   COLORS = 3, MAP_SEED = 1, MAX_CITE = 0, CAR_STEPS = 4, BOAT_STEPS = 4, FIND_CHANCE = 0.75, HELILIFT_COST = 12, FIELD_BONUS = 3, MOTORBOAT_STEPS = 4;  // vehicles cover 4 road/river tiles per AP = 0.25 AP/tile
 
 // gear catalogue: generic kits boost every roll; a field kit boosts only its discipline (but more, and cheaper than the equivalent generic)
-export const GEAR_MAX = 3;   // max gear pieces a player carries (discoveries are uncapped)
+export const GEAR_MAX = 3;   // gear slots: max gear pieces carried (drop/pickup to manage them)
+export const SPECIMEN_MAX = 8;   // specimen slots: max uncatalogued-into-hand discoveries carried — a full hand must be cleared by publishing (dumps the hand into the pool) at a research site
 export const ROLE_BONUS = 3;   // a specialist's permanent catalogue bonus for their own discipline
 export const MONSOON_END = 4;   // field season ends (epilogue begins) after this many monsoon events
 // LAB tuning — fairest config measured over 700-match sweeps (win rates 23/24/25/28% by seat, 5-pt spread):
@@ -57,7 +58,8 @@ export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s
 const COL_DC = [5, 8, 13];   // 🟪 easy · ⬜ mid · 🟦 hard
 export const catDC = (color: number) => COL_DC[color] ?? 8;
 const gearTag = (g: GearItem) => g.kind === 'field' ? `${g.field} kit` : g.kind;   // log label for a gear kit
-const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more gear piece (discoveries are uncapped)
+const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // a free gear slot
+const handFull = (p: PlayerS) => p.samples.length >= SPECIMEN_MAX;   // specimen slots all taken — can't catalogue until you publish/dump
 
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, ruins: 4, water: 2, void: 0 };  // max potential tokens; ruins = deep dig site; water = aquatic biome (forage by canoe/boat)
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
@@ -443,6 +445,7 @@ function fireEvent(G: GState, t: number, kind: TileEventKind, random: any, cur: 
   }
   else if (kind === 'animalAttack') G.log.push(`🐗 animal attack — Player ${+cur + 1} loses ${loseItem(p, random)}`);
   else if (kind === 'bushthieves') { const take = Math.min(p.money, BUSHTHIEF_TAKE); p.money -= take; G.log.push(`🏴 bushthieves @${t} — Player ${+cur + 1} -${take}$`); }
+  else if (handFull(p)) G.log.push(`🧭 helpful native — Player ${+cur + 1}'s hand is full`);   // no slot for the gift specimen
   else { const ty = dominantType(tile.terrain); p.samples.push({ type: ty, color: 0 }); G.log.push(`🧭 helpful native — Player ${+cur + 1} gains ${ty}0`); }   // a free easy specimen of the local discipline
 }
 function reveal(G: GState, t: number, random: any, cur: string, from: number) {
@@ -624,7 +627,7 @@ const citablePool = (G: GState, self: string) => { const out: Discovery[] = []; 
 
 const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
-  if (G.epilogue || p.ap < 1 || !tile.revealed || find < 0 || find >= tile.finds.length) return INVALID_MOVE;  // discoveries are uncapped in hand
+  if (G.epilogue || p.ap < 1 || handFull(p) || !tile.revealed || find < 0 || find >= tile.finds.length) return INVALID_MOVE;  // a full specimen hand blocks collecting more — publish to clear it
   p.ap -= 1;
   const d = tile.finds[find], tag = `${d.type}${d.color}`, dc = catDC(d.color);   // higher-colour finds are harder to catalogue
   const roll = random.D6() + random.D6() + gearBonus(p.gear, d.type) + (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0);   // gear + specialist bonus (role only for its discipline)
@@ -753,7 +756,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   }
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
-  if (p.ap >= 1 && tile.finds.length) {   // catalogue the find that best builds toward a HIGH-PAYOUT combo (value-weighted, not just any completion) — and, early, lean on your specialty
+  if (p.ap >= 1 && tile.finds.length && !handFull(p)) {   // catalogue the find that best builds toward a HIGH-PAYOUT combo (value-weighted, not just any completion) — and, early, lean on your specialty
     const myDisc = ROLE_DISC[p.role], early = p.samples.length < 4 ? 4 : 1;   // focus own discipline early (where the +3 pays off), fade later
     let bestI = 0, bestScore = -1;
     for (let i = 0; i < tile.finds.length; i++) {
@@ -772,7 +775,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   }
   const variant = BOTCFG.variant[+ctx.currentPlayer] || '';   // strategy variant (head-to-head exploration only)
   const minPub = (variant === 'greedy' || variant === 'ev') ? 1 : 3;   // DEFAULT = hold (build ≥3-prestige before publishing). 'greedy'/'ev' publish any combo (ev skips un-catalogueable finds, so it needs to bootstrap money→gear)
-  const hasHand = G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile project → head to a base to publish; else forage
+  const hasHand = handFull(p) || G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // a worthwhile project — OR a full specimen hand that must be cleared — sends you to a research site to publish; else forage
   const goalPred = hasHand ? isResearch
     : variant === 'ev' ? ((t: Tile) => t.finds.length ? tileForageValue(G, p, cit, t) > 0 : forageTarget(t))   // 'ev' goal set (for car / helilift reach): worthwhile revealed finds + un-entered rich tiles. The foot step itself uses evStep below (EV-per-AP, known-preferred), not nearest.
     : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
@@ -829,7 +832,7 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.ap > 0 && p.boat) riverReach(G.map, p.pos, Math.floor(p.ap * BOAT_STEPS)).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
     if (p.money >= BOARD_COST) G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });
     if (myCar) out.push({ move: 'leave', args: [] });
-    if (p.ap >= 1) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));   // discoveries are uncapped in hand
+    if (p.ap >= 1 && !handFull(p)) tile.finds.forEach((_, i) => out.push({ move: 'catalogue', args: [i] }));   // can't collect with a full specimen hand
     if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // buy a chosen gear kit (cars/boats are not buyable)
       (['g1', 'g2', 'g3'] as GearKind[]).forEach(k => { if (p.money >= GEAR_PRICE[k]) out.push({ move: 'buy', args: [k] }); });
       if (p.money >= GEAR_PRICE.field) DTYPES.forEach(t => out.push({ move: 'buy', args: ['field', t] }));

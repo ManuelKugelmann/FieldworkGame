@@ -1,5 +1,5 @@
 import { Client } from 'boardgame.io/client';
-import { Expedition, botAction, enumerate, GEAR_MAX, MONSOON_END } from './game';
+import { Expedition, botAction, enumerate, GEAR_MAX, SPECIMEN_MAX, MONSOON_END } from './game';
 import type { GState } from './game';
 import {
   playerColor, EVENT_LABEL, money$, drawBoard, fitCanvas, tileAt, spatialTargets,
@@ -119,14 +119,15 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const drove = G.vehicles.find(v => v.driver === id);
     const driving = drove ? ` <span class="chip">${drove.kind === 'motorboat' ? '🛥️ boat' : '🚗 car'}</span>` : '';   // boarded vehicle, shown in the player card
     const specimens = mine ? sampleChips(p.samples) : maskedChips(p.samples);   // your in-transit hand (not droppable; force-stashed at a research site)
-    const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
+    const specEmpties = mine ? emptySlots(SPECIMEN_MAX - p.samples.length) : '';   // free specimen slots (8 max) — your own seat only
+    const empties = emptySlots(GEAR_MAX - p.gear.length);   // free gear slots (3 max)
     const isCur = id === ctx.currentPlayer && !ctx.gameover;
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
     const pubBox = isCur && p.pubTurn !== ctx.turn ? ` 📜<span class="ap">can publish</span>` : '';
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
     return `<div class="${c}"><div class="who" style="color:${playerColor(p.role)}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
       `<div class="stat">🎓 ${p.prestige} · ${money$(p.money)} · <b>Σ ${vp}</b></div>` +
-      `<div class="inv">${specimens || dot}</div><div class="inv">${roleBonusChip(p.role)}${gearChips(p.gear)}${empties}</div></div>`;
+      `<div class="inv">${specimens || dot}${specEmpties}</div><div class="inv">${roleBonusChip(p.role)}${gearChips(p.gear)}${empties}</div></div>`;
   }).join('');
 
   const bar = $('actions'); bar.innerHTML = '';
