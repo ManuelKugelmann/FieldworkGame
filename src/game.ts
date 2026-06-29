@@ -704,12 +704,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     return { move: 'catalogue', args: [bestI] };
   }
   const hasHand = G.goals.some(g => botPursue(g) && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile (≥ colour+symbol pair) project → head to a base to publish it; else forage
-  // forage targets the cards you need: route toward biomes RICH in your discipline (biome knowledge via WEIGHTS), falling back to any forage if none is reachable
-  const goalPred = hasHand ? isResearch : (() => {
-    const td = ROLE_DISC[p.role];
-    const rich = (t: Tile) => forageTarget(t) && !!WEIGHTS[t.terrain] && WEIGHTS[t.terrain]![td] >= 3;
-    return stepToward(G, p.pos, rich, p.boat) >= 0 ? rich : forageTarget;
-  })();
+  const goalPred = hasHand ? isResearch : forageTarget;   // forage toward the nearest finds (the per-tile catalogue choice is already value-weighted) — NO biome bias, which over-concentrated specialists on uneven-abundance biomes and broke role balance
   if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
     const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
