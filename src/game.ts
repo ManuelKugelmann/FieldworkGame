@@ -915,9 +915,9 @@ export const Expedition: Game<GState> = {
     },
     onEnd: ({ G, ctx }) => {
       if (G.epilogue) { G.labLeft -= 1; return; }   // each player gets exactly one lab turn
-      // field season ends on a ROUND BOUNDARY (after the round's last seat) — equal field turns for everyone — then the lab opens at P0 next turn
-      const pos = (ctx.turn - 1) % ctx.numPlayers;
-      if (pos === ctx.numPlayers - 1 && ctx.turn > 1 && (G.monsoon >= MONSOON_END || !G.events.length)) {
+      // field ends only after a WHOLE number of rotations (round count a multiple of numPlayers) — so every seat starts the SAME number of rounds (else the last seat starts one fewer and is structurally behind). Then the lab opens at P0.
+      const pos = (ctx.turn - 1) % ctx.numPlayers, roundsDone = Math.floor((ctx.turn - 1) / ctx.numPlayers) + 1;
+      if (pos === ctx.numPlayers - 1 && ctx.turn > 1 && roundsDone % ctx.numPlayers === 0 && (G.monsoon >= MONSOON_END || !G.events.length)) {
         G.epilogue = true; G.labLeft = ctx.numPlayers; G.log.push('🌧️ monsoon — indoor lab season');
       }
     },
