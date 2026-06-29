@@ -740,7 +740,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     return { move: 'catalogue', args: [bestI] };
   }
   const variant = BOTCFG.variant[+ctx.currentPlayer] || '';   // strategy variant (head-to-head exploration only)
-  const minPub = variant === 'hold' ? 3 : 1;                   // 'hold': only head to base once you can make a higher-value combo (build bigger hands)
+  const minPub = variant === 'greedy' ? 1 : 3;                // DEFAULT = hold: build a ≥3-prestige combo before heading to base (strongest play, +~1.4 VP over greedy). 'greedy' publishes any colour+symbol pair
   const hasHand = G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile project → head to a base to publish; else forage
   const goalPred = hasHand ? isResearch : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
     let nd: DType | undefined, nc: number | undefined, bestV = 0;
