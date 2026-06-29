@@ -48,7 +48,7 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
-export const BAL = { wander: true, seasonBenign: 26, round0Ramp: true, labInverse: true };   // FAIR under strong play (seat spread ~4pt): wander = rotating start; field ends on a whole rotation (equal starts); labInverse = field-trailer opens the lab (compensates the field-end gap); round0Ramp = half-step round-1 AP handicap on the opener (shaves the round-0 first-mover edge)
+export const BAL = { wander: true, seasonBenign: 26, round0Ramp: true, labInverse: true, baseCar: true };   // wander = rotating start; field ends on a whole rotation; labInverse = field-trailer opens the lab; round0Ramp = half-step round-1 AP handicap; baseCar = place a car at the base (testing if the first mover grabbing it causes P0's edge)
 // per-seat bot strategy variant, for head-to-head strength exploration (NOT a game rule). '' = base heuristic. Set externally per match.
 export const BOTCFG: { variant: string[] } = { variant: ['', '', '', ''] };
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
@@ -857,9 +857,9 @@ export const Expedition: Game<GState> = {
     map[start].revealed = true;
     const village = map.findIndex(t => t.hotspot === 'village');   // a road market
     const vehicles: Vehicle[] = [
-      { pos: start, driver: null, kind: 'car' as const },                          // 1 car at the research base
       { pos: village >= 0 ? village : start, driver: null, kind: 'car' as const },  // 1 car at a village (fallback: base)
     ];
+    if (BAL.baseCar) vehicles.unshift({ pos: start, driver: null, kind: 'car' as const });   // car at the research base (toggle — tests the first-mover-grabs-it hypothesis)
     const rvs: number[] = []; map.forEach((t, i) => { if (t.hotspot === 'riverVillage') rvs.push(i); });   // each river village starts with 1 canoe + 1 motorboat, both ON its (water) tile
     if (rvs.length) for (const rvi of rvs) { map[rvi].equipment.push({ kind: 'boat' }); vehicles.push({ pos: rvi, driver: null, kind: 'motorboat' }); }
     else map[start].equipment.push({ kind: 'boat' });   // fallback: a canoe at base if no river village exists
