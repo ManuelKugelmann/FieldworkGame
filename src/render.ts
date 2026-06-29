@@ -208,7 +208,9 @@ export interface PatternCell { state: 'have' | 'cite' | 'need'; icon?: string; s
 export interface PatternPreview { name: string; label: string; reward: string; cells: PatternCell[]; ready: boolean; threat: 'imminent' | 'building' | 'hidden' | 'none'; }
 
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
-  const owned = G.players[pid].samples;   // your full concealed hand (inventory is unlimited)
+  const me = G.players[pid], here = G.map[me.pos];
+  const atBase = G.epilogue || here.hotspot === 'base' || here.hotspot === 'remote';   // at a research site you publish from your hand + the shared community pool
+  const owned = atBase ? me.samples.concat(G.map[G.base].cache) : me.samples;
   const citable: Discovery[] = [];
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);
 

@@ -114,13 +114,8 @@ const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote'; 
 // the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
 // the pool you publish from: in the LAB season the shared base pool (you dumped your hand into it on entry, and publish ONE hand from it); in the field the open pool at the research site you're on
 const pubPool = (G: GState, p: PlayerS): Discovery[] | null => (G.epilogue || isResearch(G.map[p.pos])) ? G.map[G.base].cache : null;   // the single shared pool (base cache), reachable from base OR frontier
-// entering a research site force-stashes your whole hand into that site's shared pool — open for ANY player's research, consumed when used
-function landAt(G: GState, cur: string) {
-  const p = G.players[cur], t = G.map[p.pos];
-  if (!G.epilogue && isResearch(t) && p.samples.length) {
-    G.map[G.base].cache.push(...p.samples); G.log.push(`Player ${+cur + 1} stash ${p.samples.length} → shared pool`); p.samples.length = 0;
-  }
-}
+// NB: the hand is NOT stashed on arrival anymore — your FIRST publish of the turn dumps it into the shared pool (see publish), so unused cards linger as community cards
+function landAt(_G: GState, _cur: string) { /* no-op (stash moved to first publish) */ }
 const isMarket = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'village' || t.hotspot === 'riverVillage';  // buy gear/boat/car here (base + road village + river village)
 
 const WEIGHTS: Partial<Record<Terrain, Record<DType, number>>> = {
@@ -549,7 +544,7 @@ const DISC_RARITY: Record<DType, number> = { arch: 0, geo: 2, zoo: 1, bot: 2 }; 
 const COL_NAME = ['purple', 'grey', 'navy'];   // the 3 colours (match DCOLOR in render)
 export interface GoalPart { count: number; type?: DType; color?: number; }   // undefined axis = free (any)
 export interface Pattern { id: string; label: string; parts: GoalPart[]; prestige: number; money: number; }
-export const publishCost = (_pubs: number) => 0;   // EXPERIMENT: publishing is free (0 AP)
+export const publishCost = (_pubs: number) => 1;   // publishing costs 1 AP — so cards linger in the shared pool (a real community pool)
 export interface GoalSlot { type?: DType; color?: number; state: 'have' | 'cite' | 'need'; }
 // fit a project: assign distinct owned discoveries to each part; cover ≤MAX_CITE shortfall from the citable pool. Returns the slot-by-slot state for the planner.
 export function evalGoal(pat: Pattern, owned: Discovery[], citable: Discovery[]): { ok: boolean; cited: number; ownedIdx: number[]; slots: GoalSlot[] } {
@@ -617,12 +612,13 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
 };
 
-const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED open pool at this research site (or the lab pool in the epilogue)
-  const p = G.players[ctx.currentPlayer], apCost = G.epilogue ? 1 : publishCost(p.pubs), pool = pubPool(G, p);   // field publish is free; LAB publish costs 1 AP so each player publishes ONCE per lab turn
+const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED community pool at this research site (or the lab pool in the epilogue)
+  const p = G.players[ctx.currentPlayer], apCost = publishCost(p.pubs), pool = pubPool(G, p);   // 1 AP per publish
   if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier)
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
-  const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the open pool — anyone's stashed cards are fair game
-  p.ap -= apCost;   // free (0 AP) under the current experiment
+  if (p.samples.length) { pool.push(...p.samples); G.log.push(`Player ${+ctx.currentPlayer + 1} dump ${p.samples.length} → pool`); p.samples.length = 0; }   // your FIRST publish of the turn dumps your hand into the pool (unused cards linger as community cards)
+  const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the pool — anyone's cards are fair game (immer rolls back the dump if this fails)
+  p.ap -= apCost;
   const used = res.ownedIdx.map(i => pool[i]);
   res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => pool.splice(i, 1));   // consume the used cards from the SHARED pool
   p.published.push(...used);                                          // → your published pool (public record)
@@ -674,12 +670,15 @@ function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: un
   if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
   return null;
 }
+// the bot ignores cheap PLAIN pairs (one axis only) — its minimum target is a colour+symbol pair (both axes pinned)
+const botPursue = (g: Pattern) => !(g.parts.length === 1 && g.parts[0].count === 2 && (g.parts[0].type === undefined || g.parts[0].color === undefined));
 // heuristic policy: publish at a hub; grab the boat when it unlocks water-bound forage; drive roads + boat water toward the goal
 export function botAction(G: GState, ctx: any, rand: () => number): { move?: string; args?: unknown[]; event?: string } {
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
   // publish from the shared open pool at a research site — claim the most valuable open question the pool can complete (your hand was force-stashed here on arrival)
   const pool = pubPool(G, p);
-  if (pool && p.ap >= (G.epilogue ? 1 : publishCost(p.pubs))) for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (assemble(G, pat.id, pool, [])) return { move: 'publish', args: [pat.id] };
+  if (pool && p.ap >= publishCost(p.pubs)) { const avail = pool.concat(p.samples);   // publish proportional to payout: the most valuable assemblable combo (ignoring cheap plain pairs)
+    for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (botPursue(pat) && assemble(G, pat.id, avail, [])) return { move: 'publish', args: [pat.id] }; }
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // invest spare money in gear: best affordable generic kit
     const buyable = (['g3', 'g2', 'g1'] as GearKind[]).find(k => p.money >= GEAR_PRICE[k] + 4);
@@ -693,7 +692,8 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     for (let i = 0; i < tile.finds.length; i++) {
       const trial = [...p.samples, tile.finds[i]];
       let goal = 0;
-      for (const g of G.goals) {   // value of progress toward g = its prestige scaled by how complete the find leaves it, + a completion bonus → favours building valuable hands over finishing cheap pairs
+      for (const g of G.goals) {   // value of progress toward g = its prestige scaled by completion + a completion bonus → build valuable hands; plain pairs are ignored (min target = colour+symbol pair)
+        if (!botPursue(g)) continue;
         const r = evalGoal(g, trial, cit);
         const have = r.slots.filter(s => s.state === 'have').length, need = g.parts.reduce((s, pt) => s + pt.count, 0);
         goal = Math.max(goal, g.prestige * (have / need) + (r.ok ? g.prestige : 0));
@@ -703,7 +703,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     }
     return { move: 'catalogue', args: [bestI] };
   }
-  const hasHand = G.goals.some(g => assemble(G, g.id, p.samples, cit));   // hand completes a project → head to a research site to stash + cash it; else forage
+  const hasHand = G.goals.some(g => botPursue(g) && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile (≥ colour+symbol pair) project → head to a base to publish it; else forage
   const goalPred = hasHand ? isResearch : forageTarget;
   if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
@@ -763,7 +763,7 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
-  if (pool && p.ap >= (G.epilogue ? 1 : publishCost(p.pubs))) G.goals.forEach(pat => { if (assemble(G, pat.id, pool, [])) out.push({ move: 'publish', args: [pat.id] }); });
+  if (pool && p.ap >= publishCost(p.pubs)) { const avail = pool.concat(p.samples); G.goals.forEach(pat => { if (assemble(G, pat.id, avail, [])) out.push({ move: 'publish', args: [pat.id] }); }); }
   out.push({ event: 'endTurn' });
   return out;
 };
