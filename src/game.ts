@@ -48,7 +48,7 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
-export const BAL = { wander: true, seasonBenign: 26, round0Ramp: true, labInverse: true, baseCar: true };   // wander = rotating start; field ends on a whole rotation; labInverse = field-trailer opens the lab; round0Ramp = half-step round-1 AP handicap; baseCar = place a car at the base (testing if the first mover grabbing it causes P0's edge)
+export const BAL = { wander: true, seasonBenign: 26, round0Ramp: true, labInverse: false, baseCar: true };   // FAIR under strong play (seats ~4-5pt): wander = rotating start; field ends on a whole rotation (equal starts); round0Ramp = integer round-1 ramp (4p 2/3/3/4) countering the first-mover edge; labInverse off (the ramp handles P0, so normal lab pairs best); baseCar = car at base
 // per-seat bot strategy variant, for head-to-head strength exploration (NOT a game rule). '' = base heuristic. Set externally per match.
 export const BOTCFG: { variant: string[] } = { variant: ['', '', '', ''] };
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
