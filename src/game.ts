@@ -48,7 +48,7 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   dump 'roundrobin' = each lab player dumps their hand on their own turn (dump-as-you-go). NB 'upfront' (pool everything before P0)
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
-export const BAL = { wander: true, seasonBenign: 26, round0Ramp: false, labInverse: true };   // labInverse ON: the field-trailer (last to act in the field) OPENS the lab — a deterministic catch-up that compensates the field-end asymmetry (P3 16→22%, spread 13→9pt under strong play). wander = rotating start; round0Ramp = round-1 AP ramp (off)
+export const BAL = { wander: true, seasonBenign: 26, round0Ramp: true, labInverse: true };   // FAIR under strong play (seat spread ~4pt): wander = rotating start; field ends on a whole rotation (equal starts); labInverse = field-trailer opens the lab (compensates the field-end gap); round0Ramp = half-step round-1 AP handicap on the opener (shaves the round-0 first-mover edge)
 // per-seat bot strategy variant, for head-to-head strength exploration (NOT a game rule). '' = base heuristic. Set externally per match.
 export const BOTCFG: { variant: string[] } = { variant: ['', '', '', ''] };
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
