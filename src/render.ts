@@ -147,7 +147,7 @@ export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: Player
     return !e || e.kind === 'boat' ? 'Pick up boat' : `Pick up ${gearIcon(e.gear!)}`; }
   if (a.move === 'helilift') return `Helilift → base (−${money$(12)})`;
   if (a.move === 'reclaim') { const d = tile.cache[a.args![0] as number]; return d ? `Take ${prettyFind(d)}` : null; }
-  if (a.move === 'discard') return null;   // dropping is done by clicking your own hand chip
+  if (a.move === 'discard') { const d = p?.samples[a.args![0] as number]; return d ? `Drop ${prettyFind(d)}` : null; }   // drop a carried specimen as an open token
   if (a.event === 'endTurn') return 'End turn';
   return null;
 }

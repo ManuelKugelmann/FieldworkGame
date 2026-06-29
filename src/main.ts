@@ -148,7 +148,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
       if (a.move === 'board' && label) label = G.vehicles[a.args![0] as number]?.kind === 'motorboat' ? 'Board boat' : 'Board car';
       return { a, label };
     }).filter((x): x is { a: Action; label: string } => x.label !== null);
-    const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6, stash: 7, unstash: 8 };
+    const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, reclaim: 5, pickup: 5, discard: 6, drop: 6, stash: 7, unstash: 8 };
     const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
     const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';
     labeled.sort((p, q) => rank(p.a) - rank(q.a));

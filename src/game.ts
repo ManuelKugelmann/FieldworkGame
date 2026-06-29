@@ -557,7 +557,19 @@ const pickup: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   
   const g = eq.splice(idx, 1)[0].gear!; p.gear.push(g);
   G.log.push(`Player ${+ctx.currentPlayer + 1} pickup ${gearTag(g)} ${where}`);
 };
-// (discoveries are NOT droppable — a carried hand only leaves you by being force-stashed at a research site, then consumed by research)
+// SPECIMENS as open tokens: drop one from your hand onto the current FIELD tile (face-up in the tile cache — free for anyone to reclaim) or take one back. Lets you free a specimen slot without a base trip. Research-site caches ARE the publish pool, so they're off-limits here (publish manages those).
+const discard: Move<GState> = ({ G, ctx }, sel: number) => {
+  const p = G.players[ctx.currentPlayer];
+  if (G.epilogue || isResearch(G.map[p.pos]) || sel < 0 || sel >= p.samples.length) return INVALID_MOVE;
+  const d = p.samples.splice(sel, 1)[0]; G.map[p.pos].cache.push(d);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} drop ${d.type}${d.color} @${p.pos}`);
+};
+const reclaim: Move<GState> = ({ G, ctx }, sel: number) => {
+  const p = G.players[ctx.currentPlayer], cache = G.map[p.pos].cache;
+  if (G.epilogue || isResearch(G.map[p.pos]) || handFull(p) || sel < 0 || sel >= cache.length) return INVALID_MOVE;
+  const d = cache.splice(sel, 1)[0]; p.samples.push(d);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} take ${d.type}${d.color} @${p.pos}`);
+};
 
 // ---- research projects: a SHARED, CONSUMED pool of open questions (first to publish CLAIMS it; the pool refills from a per-match deck).
 // Poker grammar (discipline = rank, colour = suit) made CONCRETE: each project pins specific values, so two players can race the same question.
@@ -843,6 +855,10 @@ export const enumerate = (G: GState, ctx: any) => {
       if (e.kind === 'boat' && !p.boat) out.push({ move: 'pickup', args: [i] });
       if (e.kind === 'gear' && hasRoom(p)) out.push({ move: 'pickup', args: [i] });
     });
+    if (!isResearch(tile)) {                                                                  // specimens as open tokens (field tiles only — research caches are the publish pool)
+      p.samples.forEach((_, i) => out.push({ move: 'discard', args: [i] }));                  // drop a specimen to free a slot
+      if (!handFull(p)) tile.cache.forEach((_, i) => out.push({ move: 'reclaim', args: [i] }));   // take a dropped specimen back
+    }
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
@@ -911,7 +927,7 @@ export const Expedition: Game<GState> = {
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'], roundEvent: '',
     };
   },
-  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup },
+  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, discard, reclaim },
   // EXPERIMENTAL knob — lab-season frontier merge: 'last' (only last player), 'all' (at lab start, everyone), 'none'
   turn: {
     onBegin: ({ G, ctx, random }) => {
