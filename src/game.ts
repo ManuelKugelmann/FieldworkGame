@@ -640,29 +640,11 @@ function findValue(G: GState, p: PlayerS, cit: Discovery[], find: Discovery): nu
   const bonus = gearBonus(p.gear, find.type) + (ROLE_DISC[p.role] === find.type ? ROLE_BONUS : 0);
   return combo * p2d6ge(catDC(find.color) - bonus);
 }
-// expected forage value of tile u: its revealed find, or — if un-entered — the biome's likely yield (dominant discipline + signature colour) × find chance
-function tileForageValue(G: GState, p: PlayerS, cit: Discovery[], u: number): number {
-  const t = G.map[u];
+// expected forage value of a tile: its revealed find, or — if un-entered — the biome's likely yield (dominant discipline + signature colour) × find chance. >0 means "worth cataloguing for me" (can succeed AND advances a combo).
+function tileForageValue(G: GState, p: PlayerS, cit: Discovery[], t: Tile): number {
   if (t.finds.length) return Math.max(...t.finds.map(f => findValue(G, p, cit, f)));
   if (t.richness > 0 && !t.roads && !t.hotspot && !t.bridge) return findValue(G, p, cit, { type: dominantType(t.terrain), color: BIOME_COLOR[t.terrain] ?? 0 }) * FIND_CHANCE;
   return 0;
-}
-// first step toward the highest-EV forage tile: maximise value / (1 + AP distance) — naturally trades target value against move cost
-function stepToEV(G: GState, from: number, boat: boolean, valueOf: (u: number) => number): number {
-  const ok = boat ? canBoat : canMove, wt = boat ? boatCost : cost;
-  const dist = new Map<number, number>([[from, 0]]), prev = new Map<number, number>();
-  const pq: [number, number][] = [[0, from]];
-  while (pq.length) {
-    let bi = 0; for (let k = 1; k < pq.length; k++) if (pq[k][0] < pq[bi][0]) bi = k;
-    const [d, u] = pq.splice(bi, 1)[0];
-    if (d > (dist.get(u) ?? Infinity) || d > 8) continue;   // cap search radius (8 AP) for speed
-    for (const v of nbrs(u)) if (ok(G.map, u, v)) { const nd = d + wt(G.map, u, v); if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); prev.set(v, u); pq.push([nd, v]); } }
-  }
-  let best = -1, bestEV = 0;
-  for (const [u, d] of dist) { if (u === from) continue; const val = valueOf(u); if (val <= 0) continue; const ev = val / (1 + d); if (ev > bestEV) { bestEV = ev; best = u; } }
-  if (best < 0) return -1;
-  let c = best; while (prev.get(c) !== from) { const pc = prev.get(c); if (pc === undefined) return -1; c = pc; }
-  return c;
 }
 // ---- Dijkstra over the weighted move-graph (foot or boat) → first step toward the nearest goal cell ----
 function stepToward(G: GState, from: number, goal: (t: Tile) => boolean, boat: boolean): number {
@@ -742,7 +724,9 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const variant = BOTCFG.variant[+ctx.currentPlayer] || '';   // strategy variant (head-to-head exploration only)
   const minPub = variant === 'greedy' ? 1 : 3;                // DEFAULT = hold: build a ≥3-prestige combo before heading to base (strongest play, +~1.4 VP over greedy). 'greedy' publishes any colour+symbol pair
   const hasHand = G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile project → head to a base to publish; else forage
-  const goalPred = hasHand ? isResearch : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
+  const goalPred = hasHand ? isResearch
+    : variant === 'ev' ? ((t: Tile) => tileForageValue(G, p, cit, t) > 0)   // 'ev': forage toward the nearest VALUABLE find (cataloguable for me AND advances a combo) — skips worthless finds; nearest keeps it stable (no target oscillation)
+    : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
     let nd: DType | undefined, nc: number | undefined, bestV = 0;
     for (const g of G.goals) { if (!botPursue(g)) continue; const r = evalGoal(g, p.samples, cit);
       const have = r.slots.filter(s => s.state === 'have').length, need = g.parts.reduce((s, pt) => s + pt.count, 0);
@@ -754,7 +738,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
     const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
-    const nx = (variant === 'ev' && !hasHand) ? stepToEV(G, p.pos, p.boat, u => tileForageValue(G, p, cit, u)) : stepToward(G, p.pos, goalPred, p.boat);   // 'ev': step toward the highest expected-value find (value ÷ move cost); else nearest goal
+    const nx = stepToward(G, p.pos, goalPred, p.boat);   // foot/boat: step toward the nearest goal tile (stable)
     if (nx >= 0) { if (p.ap >= (p.boat ? boatCost : cost)(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // reachable — step now, else wait for AP next turn
     else if (hasHand && p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };  // genuinely no hub reachable → fly home
   }
