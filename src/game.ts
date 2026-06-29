@@ -660,6 +660,36 @@ function stepToward(G: GState, from: number, goal: (t: Tile) => boolean, boat: b
   }
   return -1;
 }
+// 'ev' forage targeting: full Dijkstra over the move-graph, then head for the tile with the best expected
+// catalogue value per AP of travel. A REVEALED find uses its KNOWN value (combo progress × catalogue odds);
+// an un-entered tile uses the biome ESTIMATE (likely discipline+colour) × find-chance, discounted by KNOWN_PREF
+// so a sure known find always beats a speculative one of equal raw EV. Dividing by distance self-commits the
+// target (the chosen tile's score only rises as you approach it), so it doesn't oscillate.
+const KNOWN_PREF = 0.6;   // a speculative un-entered tile is worth this fraction of an equal-EV revealed find — prefer the bird in hand
+function evStep(G: GState, p: PlayerS, cit: Discovery[], boat: boolean): number {
+  const from = p.pos, ok = boat ? canBoat : canMove, wt = boat ? boatCost : cost;
+  const dist = new Map<number, number>([[from, 0]]), prev = new Map<number, number>();
+  const pq: [number, number][] = [[0, from]];
+  while (pq.length) {   // no early exit — relax the whole reachable graph so every candidate tile has a true travel cost
+    let bi = 0; for (let k = 1; k < pq.length; k++) if (pq[k][0] < pq[bi][0]) bi = k;
+    const [d, u] = pq.splice(bi, 1)[0];
+    if (d > (dist.get(u) ?? Infinity)) continue;
+    for (const v of nbrs(u)) if (ok(G.map, u, v)) { const nd = d + wt(G.map, u, v); if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); prev.set(v, u); pq.push([nd, v]); } }
+  }
+  let best = -1, bestScore = 0;
+  for (const [u, d] of dist) {
+    if (u === from) continue;
+    const t = G.map[u]; let v = 0;
+    if (t.finds.length) v = Math.max(...t.finds.map(f => findValue(G, p, cit, f)));   // KNOWN: a revealed token on the tile
+    else if (t.richness > 0 && !t.revealed && !t.roads && !t.hotspot && !t.bridge)
+      v = findValue(G, p, cit, { type: dominantType(t.terrain), color: BIOME_COLOR[t.terrain] ?? 0 }) * FIND_CHANCE * KNOWN_PREF;   // SPECULATIVE: estimate the biome's likely yield
+    if (v <= 0) continue;
+    const score = v / (d + 1);   // expected value per AP of travel (+1 folds in the ~constant flip + catalogue cost)
+    if (score > bestScore) { bestScore = score; best = u; }
+  }
+  if (best < 0) return -1;
+  let c = best; while (prev.get(c) !== from) c = prev.get(c)!; return c;   // first step toward the chosen tile
+}
 const forageTarget = (t: Tile) => t.finds.length > 0 || (!t.revealed && t.richness > 0);  // unclaimed token, or unexplored find-bearing terrain
 // how many goal-cells are reachable from `from` on the foot vs boat graph (used to decide if grabbing the shared boat is worth it)
 function reachGoals(G: GState, from: number, boat: boolean, goal: (t: Tile) => boolean): number {
@@ -725,7 +755,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const minPub = (variant === 'greedy' || variant === 'ev') ? 1 : 3;   // DEFAULT = hold (build ≥3-prestige before publishing). 'greedy'/'ev' publish any combo (ev skips un-catalogueable finds, so it needs to bootstrap money→gear)
   const hasHand = G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile project → head to a base to publish; else forage
   const goalPred = hasHand ? isResearch
-    : variant === 'ev' ? ((t: Tile) => t.finds.length ? tileForageValue(G, p, cit, t) > 0 : forageTarget(t))   // 'ev': skip worthless REVEALED finds (not cataloguable / no combo), but explore un-entered tiles by proximity like hold (don't chase estimated phantom value)
+    : variant === 'ev' ? ((t: Tile) => t.finds.length ? tileForageValue(G, p, cit, t) > 0 : forageTarget(t))   // 'ev' goal set (for car / helilift reach): worthwhile revealed finds + un-entered rich tiles. The foot step itself uses evStep below (EV-per-AP, known-preferred), not nearest.
     : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
     let nd: DType | undefined, nc: number | undefined, bestV = 0;
     for (const g of G.goals) { if (!botPursue(g)) continue; const r = evalGoal(g, p.samples, cit);
@@ -738,7 +768,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
     const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
-    const nx = stepToward(G, p.pos, goalPred, p.boat);   // foot/boat: step toward the nearest goal tile (stable)
+    const nx = (variant === 'ev' && !hasHand) ? evStep(G, p, cit, p.boat) : stepToward(G, p.pos, goalPred, p.boat);   // 'ev': go to the best EV-per-AP tile (known-preferred); others: nearest goal tile (stable)
     if (nx >= 0) { if (p.ap >= (p.boat ? boatCost : cost)(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // reachable — step now, else wait for AP next turn
     else if (hasHand && p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };  // genuinely no hub reachable → fly home
   }
