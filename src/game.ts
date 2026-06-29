@@ -49,6 +49,8 @@ export const MONSOON_END = 4;   // field season ends (epilogue begins) after thi
 //   over-corrects badly — P0 cherry-picks the full pool and wins ~62% — so it is NOT used.
 export const LAB_CFG: { frontier: 'last' | 'all' | 'none'; dump: 'roundrobin' | 'upfront' } = { frontier: 'all', dump: 'roundrobin' };
 export const BAL = { wander: true, seasonBenign: 26, round0Ramp: false, labInverse: false };   // wander = rotating start; seasonBenign ≈ field rounds; round0Ramp = handicap round-1 opener; labInverse = lab publishes in REVERSE seat order (P{N-1} first)
+// per-seat bot strategy variant, for head-to-head strength exploration (NOT a game rule). '' = base heuristic. Set externally per match.
+export const BOTCFG: { variant: string[] } = { variant: ['', '', '', ''] };
 export const GEAR_PRICE: Record<GearKind, number> = { g1: 3, g2: 6, g3: 10, field: 4 };
 export const gearBonus = (gear: GearItem[], t: DType) => gear.reduce((s, g) => s + (g.kind === 'g1' ? 1 : g.kind === 'g2' ? 2 : g.kind === 'g3' ? 3 : g.field === t ? FIELD_BONUS : 0), 0);
 // catalogue difficulty by colour tier — bare 2d6 success: easy ~83%, mid ~42%, hard 0% (needs gear). Gear/specialist bonuses push the hard ones over.
@@ -703,9 +705,18 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     }
     return { move: 'catalogue', args: [bestI] };
   }
-  const hasHand = G.goals.some(g => botPursue(g) && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile (≥ colour+symbol pair) project → head to a base to publish it; else forage
-  // NO biome-targeting: any biome bias (specialty OR demand-driven) amplifies pathing differences into a seat gradient (P3 ~18% vs ~25% with plain forage). Forage the nearest finds; the per-tile catalogue pick is already value-weighted. Balance > cleverness.
-  const goalPred = hasHand ? isResearch : forageTarget;
+  const variant = BOTCFG.variant[+ctx.currentPlayer] || '';   // strategy variant (head-to-head exploration only)
+  const minPub = variant === 'hold' ? 3 : 1;                   // 'hold': only head to base once you can make a higher-value combo (build bigger hands)
+  const hasHand = G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile project → head to a base to publish; else forage
+  const goalPred = hasHand ? isResearch : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
+    let nd: DType | undefined, nc: number | undefined, bestV = 0;
+    for (const g of G.goals) { if (!botPursue(g)) continue; const r = evalGoal(g, p.samples, cit);
+      const have = r.slots.filter(s => s.state === 'have').length, need = g.parts.reduce((s, pt) => s + pt.count, 0);
+      if (have > 0 && have < need) { const v = g.prestige * have / need; if (v > bestV) { bestV = v; const m = r.slots.find(s => s.state !== 'have'); nd = m?.type; nc = m?.color; } } }
+    if (bestV === 0) return forageTarget;
+    const rich = (t: Tile) => forageTarget(t) && !!WEIGHTS[t.terrain] && (nd === undefined || WEIGHTS[t.terrain]![nd] >= 3) && (nc === undefined || BIOME_COLOR[t.terrain] === nc);
+    return stepToward(G, p.pos, rich, p.boat) >= 0 ? rich : forageTarget;
+  })());
   if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
     const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
