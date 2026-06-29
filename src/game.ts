@@ -62,6 +62,7 @@ const hasRoom = (p: PlayerS) => p.gear.length < GEAR_MAX;   // can take one more
 const RICH: Record<Terrain, number> = { grassland: 2, jungle: 4, rocky: 3, ruins: 4, water: 2, void: 0 };  // max potential tokens; ruins = deep dig site; water = aquatic biome (forage by canoe/boat)
 const plainRiver = (t: Tile) => t.terrain === 'water' && !t.bridge;  // river = hard barrier (1-tile-wide)
 const isLandT = (t: Tile) => t.terrain !== 'water' && t.terrain !== 'void';  // any walkable land terrain
+const hasBoatItem = (t: Tile) => t.equipment.some(e => e.kind === 'boat');  // the shared canoe is cached on this tile (droppable item, not the positioned motorboat)
 const isVoid = (t: Tile) => t.terrain === 'void';                   // off-board cell (irregular edges) — impassable, no finds
 const dirBit = (a: number, b: number) => b === a - N ? 1 : b === a + N ? 4 : b === a + 1 ? 2 : 8;  // N1 E2 S4 W8
 // every link type (roads / footpaths / brooks / cliffs / river channel) is one edge bitmask on the tile; the only difference is which mask + tile prerequisite a mover reads
@@ -74,7 +75,11 @@ const canMoveDry = (map: Tile[], a: number, b: number) => onBlocked(map, a, b) |
 const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph: bridges via edge; open water needs a boat; cliffs/void block all
   if (onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b])) return false;   // cliff / off-board = hard barrier
   if (map[a].bridge || map[b].bridge) return onPath(map, a, b);    // bridge: board/leave via an edge
-  if (plainRiver(map[a]) || plainRiver(map[b])) return false;      // open water — boat only (no foot-ford)
+  if (plainRiver(map[a]) || plainRiver(map[b])) {                  // open water — boat only, EXCEPT a river tile holding the shared canoe is wadeable on foot (1 AP) to fetch/return it
+    const aw = plainRiver(map[a]), bw = plainRiver(map[b]);
+    if (aw && bw) return false;                                    // never water↔water on foot
+    return aw ? hasBoatItem(map[a]) : hasBoatItem(map[b]);         // the water endpoint must hold the canoe
+  }
   return true;                                                     // land↔land / land↔brook (no rocky exit constraint)
 };
 const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 0.5 : 1;  // path/road edge = 0.5 AP; any other (regular) tile = 1 AP
@@ -108,7 +113,7 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
   const p = G.players[pid];
   if (a.move === 'drive') { const car = myVehicle(G, pid); if (!car) return 1; const boat = car.kind === 'motorboat'; const d = (boat ? riverStepDist : roadStepDist)(G.map, car.pos, a.args![0] as number); return Number.isFinite(d) ? d / (boat ? MOTORBOAT_STEPS : CAR_STEPS) : 1; }
   if (a.move === 'boatRun') { const d = riverStepDist(G.map, p.pos, a.args![0] as number); return Number.isFinite(d) ? d / BOAT_STEPS : 1; }   // 1 AP buys BOAT_STEPS channel tiles
-  if (a.move === 'move') return apCost(G, p.pos, a.args![0] as number, p.boat);
+  if (a.move === 'move') { const veh = myVehicle(G, pid); if (veh?.kind === 'motorboat') return 0; return apCost(G, p.pos, a.args![0] as number, p.boat); }   // dock off a motorboat = free
   return 0;
 }
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
@@ -469,7 +474,14 @@ function reveal(G: GState, t: number, random: any, cur: string, from: number) {
 const myVehicle = (G: GState, id: string) => G.vehicles.find(v => v.driver === id);
 const move: Move<GState> = ({ G, ctx, random }, t: number) => {
   const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || myVehicle(G, ctx.currentPlayer) || !nbrs(p.pos).includes(t)) return INVALID_MOVE;   // must explicitly `leave` the car/boat before a foot move
+  if (G.epilogue || !nbrs(p.pos).includes(t)) return INVALID_MOVE;
+  const veh = myVehicle(G, ctx.currentPlayer);   // a foot move while driving AUTO-LEAVES the vehicle first (no explicit `leave` needed)
+  if (veh?.kind === 'motorboat') {               // stepping off a motorboat = dock ashore onto the clicked adjacent bank (free)
+    if (!isLandT(G.map[t]) || onBlocked(G.map, p.pos, t)) return INVALID_MOVE;
+    const from = p.pos; veh.driver = null; p.pos = t; reveal(G, t, random, ctx.currentPlayer, from); landAt(G, ctx.currentPlayer);
+    G.log.push(`Player ${+ctx.currentPlayer + 1} dock → ${t}`); return;
+  }
+  if (veh) veh.driver = null;   // car: dismount in place (car stays put), then take a normal foot step (INVALID_MOVE below rolls this back if the step is illegal)
   const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t);   // boating opens water + cheap brooks
   if (!ok) return INVALID_MOVE;
   const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t);
@@ -804,7 +816,8 @@ export const enumerate = (G: GState, ctx: any) => {
   const p = G.players[ctx.currentPlayer], out: any[] = [], tile = G.map[p.pos];
   if (!G.epilogue) {                                                  // field season
     const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer);
-    if (!myCar) nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });   // foot moves only when NOT driving (must leave first)
+    if (!myCar || myCar.kind === 'car') nbrs(p.pos).forEach(t => { const ok = p.boat ? canBoat(G.map, p.pos, t) : canMove(G.map, p.pos, t); const c = p.boat ? boatCost(G.map, p.pos, t) : cost(G.map, p.pos, t); if (ok && p.ap >= c) out.push({ move: 'move', args: [t] }); });   // foot moves (on foot, or auto-leaving a car: dismount in place then step)
+    else nbrs(p.pos).forEach(t => { if (isLandT(G.map[t]) && !onBlocked(G.map, p.pos, t)) out.push({ move: 'move', args: [t] }); });   // driving a motorboat: a foot move docks you ashore (auto-leave) onto an adjacent bank
     if (p.ap > 0 && myCar) (myCar.kind === 'motorboat' ? riverReach(G.map, myCar.pos, Math.floor(p.ap * MOTORBOAT_STEPS)) : roadReach(G.map, myCar.pos, Math.floor(p.ap * CAR_STEPS))).forEach(d => out.push({ move: 'drive', args: [d] }));
     if (p.ap > 0 && p.boat) riverReach(G.map, p.pos, Math.floor(p.ap * BOAT_STEPS)).forEach(d => out.push({ move: 'boatRun', args: [d] }));   // fast river-channel boating
     if (p.money >= BOARD_COST) G.vehicles.forEach((v, i) => { if (v.pos === p.pos && v.driver === null) out.push({ move: 'board', args: [i] }); });

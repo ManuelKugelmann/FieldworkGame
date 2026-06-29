@@ -417,20 +417,29 @@ export function drawBoard(cctx: CanvasRenderingContext2D, G: GState, ctxState: a
     });
   }
 
-  // 5) legal-target rings (solid = walk, dashed = drive) + AP cost label (fractional for the car)
+  // 5) legal-target rings (solid = walk, dashed = drive) + AP cost label (fractional for the car).
+  // Colour-codes the network: 🚗 car moves orange · 🛶/🛥 boat moves cyan · 🚶 foot moves gold.
   if (targets) {
+    const me = G.players[ctxState.currentPlayer];
+    const myVeh = G.vehicles.find(v => v.driver === ctxState.currentPlayer);   // the vehicle this player is driving (car vs motorboat)
+    const ORANGE = '#ff9f45', CYAN = '#46d6e0', GOLD = '#ffd24a';
+    const moveColor = (a: Action) =>
+      a.move === 'drive' ? (myVeh?.kind === 'motorboat' ? CYAN : ORANGE)   // drive = car (orange) or motorboat (cyan)
+      : a.move === 'boatRun' || (a.move === 'move' && me.boat) ? CYAN       // canoe run, or wading while carrying the canoe
+      : GOLD;                                                               // plain foot step
     cctx.textBaseline = 'top';
     cctx.font = `bold ${Math.max(9, CELL * 0.28)}px ui-monospace, monospace`;
     for (const [t, a] of targets) {
       const c = t % G.cols, r = (t / G.cols) | 0, x = c * CELL, y = r * CELL;
-      cctx.strokeStyle = '#ffd24a'; cctx.lineWidth = 1.25;
+      const col = moveColor(a);
+      cctx.strokeStyle = col; cctx.lineWidth = 1.25;
       cctx.setLineDash(a.move === 'move' ? [] : [4, 3]);   // dashed = vehicle hop (drive / boat-run)
       cctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);   // thin ring hugging the tile edge → leaves the inner markers visible
       cctx.setLineDash([]);
       const ap = targetAP(G, ctxState.currentPlayer, a);
       const label = Number.isInteger(ap) ? String(ap) : ap.toFixed(1);   // car costs are fractional (1 AP ÷ CAR_STEPS/tile)
       cctx.fillStyle = 'rgba(0,0,0,0.8)'; cctx.fillText(label, x + CELL / 2 + 1, y + 4);
-      cctx.fillStyle = '#ffe27a'; cctx.fillText(label, x + CELL / 2, y + 3);
+      cctx.fillStyle = col; cctx.fillText(label, x + CELL / 2, y + 3);
     }
     cctx.textBaseline = 'middle';
   }
