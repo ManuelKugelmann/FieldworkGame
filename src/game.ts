@@ -899,7 +899,7 @@ export const Expedition: Game<GState> = {
         p.ap = 1;   // exactly enough AP for ONE publish this lab turn
       } else {
         const round = Math.floor((ctx.turn - 1) / ctx.numPlayers), pos = (ctx.turn - 1) % ctx.numPlayers;
-        const base = (BAL.round0Ramp && round === 0) ? Math.max(1, START_AP - (ctx.numPlayers - 1 - pos)) : START_AP;   // optional round-1 ramp: the opener gets the fewest AP
+        const base = (BAL.round0Ramp && round === 0) ? Math.max(1, START_AP - (ctx.numPlayers - 1 - pos) * 0.5) : START_AP;   // round-1 ramp (half-step): the opener gets ~1.5 AP less, fading to 0 by the last position — counters the first-mover edge without over-correcting
         p.ap = base + (G.roundEvent === 'tailwind' ? 1 : 0);
       }
     },
