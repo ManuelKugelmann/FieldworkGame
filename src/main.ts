@@ -1,5 +1,5 @@
 import { Client } from 'boardgame.io/client';
-import { Expedition, botAction, enumerate, publishCost, GEAR_MAX, MONSOON_END } from './game';
+import { Expedition, botAction, enumerate, GEAR_MAX, MONSOON_END } from './game';
 import type { GState } from './game';
 import {
   playerColor, EVENT_LABEL, money$, drawBoard, fitCanvas, tileAt, spatialTargets,
@@ -98,7 +98,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   $('status').textContent = ctx.gameover
     ? `game over — winner Player ${+ctx.gameover.winner + 1}`
     : `${phase}${isBot ? ' · 🤖' : ''}${roundEv}${endWarn}`;
-  $('research-h').innerHTML = ctx.gameover ? 'Research' : `📜 Research <span class="ap">${publishCost(cur.pubs)} AP</span>`;   // publish AP cost (rises with your publish count)
+  $('research-h').innerHTML = ctx.gameover ? 'Research' : `📜 Research <span class="ap">1/turn</span>`;   // at most one publish per turn (no AP cost)
 
   $('plan').innerHTML = ctx.gameover ? '' : publishPreviews(G, ctx.currentPlayer).map(pat => {
     const cells = pat.cells.map(c =>   // no progress indicators — just the target tokens; the player reads the pools/inventory themselves
@@ -122,7 +122,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const empties = emptySlots(GEAR_MAX - p.gear.length);   // discoveries are uncapped; empty slots show remaining GEAR capacity only
     const isCur = id === ctx.currentPlayer && !ctx.gameover;
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
-    const pubBox = isCur ? ` 📜<span class="ap">${publishCost(p.pubs)} AP</span>` : '';
+    const pubBox = isCur && p.pubTurn !== ctx.turn ? ` 📜<span class="ap">can publish</span>` : '';
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
     return `<div class="${c}"><div class="who" style="color:${playerColor(p.role)}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
       `<div class="stat">🎓 ${p.prestige} · ${money$(p.money)} · <b>Σ ${vp}</b></div>` +
@@ -135,7 +135,6 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
   else {
     const tile = G.map[cur.pos];
     // stable layout: fixed left order so buttons never shuffle; helilift + End turn pinned right
-    const pubAP = publishCost(cur.pubs);   // publish AP cost rises with each publish
     const carHere = G.vehicles.find(v => v.pos === cur.pos);
     const seenBoard = new Set<string>();   // multiple cars/boats on the tile → offer a single "Board car"/"Board boat"
     const dedup = legal.filter(a => {
@@ -147,8 +146,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
       let label = actionLabel(a, tile, G.goals, cur, carHere);
       if (a.move === 'board' && label) label = G.vehicles[a.args![0] as number]?.kind === 'motorboat' ? 'Board boat' : 'Board car';
       return { a, label };
-    }).filter((x): x is { a: Action; label: string } => x.label !== null)
-      .map(x => x.a.move === 'publish' ? { ...x, label: `${x.label} · ${pubAP}AP` } : x);
+    }).filter((x): x is { a: Action; label: string } => x.label !== null);
     const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, drop: 6, stash: 7, unstash: 8 };
     const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
     const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';

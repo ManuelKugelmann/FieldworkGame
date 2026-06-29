@@ -23,7 +23,7 @@ export interface Vehicle { pos: number; driver: string | null; kind: VehicleKind
 export type GearKind = 'g1' | 'g2' | 'g3' | 'field';
 export interface GearItem { kind: GearKind; field?: DType; }   // field = the discipline a 'field' kit boosts
 export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; rivers: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; cache: Discovery[]; }  // cache = discoveries DROPPED here (face-up, free to pick up); roads/paths/smallRivers(brooks)/blocked(cliffs)/rivers(channel linkage) = edge bitmasks N1 E2 S4 W8
-export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; gear: GearItem[]; boat: boolean; role: Role; }  // role = specialist (permanent catalogue bonus for its discipline)
+export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; pubTurn: number; gear: GearItem[]; boat: boolean; role: Role; }  // pubTurn = ctx.turn of last publish (≤ 1 publish/turn); role = specialist (permanent catalogue bonus for its discipline)
 export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
@@ -613,16 +613,16 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
 };
 
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED community pool at this research site (or the lab pool in the epilogue)
-  const p = G.players[ctx.currentPlayer], apCost = publishCost(p.pubs), pool = pubPool(G, p);   // 1 AP per publish
-  if (!pool || p.ap < apCost) return INVALID_MOVE;                   // must be at a research site (base / frontier)
+  const p = G.players[ctx.currentPlayer], pool = pubPool(G, p);
+  if (!pool || p.pubTurn === ctx.turn) return INVALID_MOVE;          // at a research site, and at most ONE publish per turn (no AP cost)
   const pat = G.goals.find(x => x.id === patternName); if (!pat) return INVALID_MOVE;
-  if (p.samples.length) { pool.push(...p.samples); G.log.push(`Player ${+ctx.currentPlayer + 1} dump ${p.samples.length} → pool`); p.samples.length = 0; }   // your FIRST publish of the turn dumps your hand into the pool (unused cards linger as community cards)
+  if (p.samples.length) { pool.push(...p.samples); G.log.push(`Player ${+ctx.currentPlayer + 1} dump ${p.samples.length} → pool`); p.samples.length = 0; }   // your publish dumps your hand into the pool — unused cards linger as community cards
   const res = assemble(G, pat.id, pool, []); if (!res) return INVALID_MOVE;   // assemble from the pool — anyone's cards are fair game (immer rolls back the dump if this fails)
-  p.ap -= apCost;
+  p.pubTurn = ctx.turn;                                              // used your one publish this turn
   const used = res.ownedIdx.map(i => pool[i]);
   res.ownedIdx.slice().sort((a, b) => b - a).forEach(i => pool.splice(i, 1));   // consume the used cards from the SHARED pool
   p.published.push(...used);                                          // → your published pool (public record)
-  p.prestige += pat.prestige; p.money += pat.money; p.pubs += 1;     // research token → prestige; bump publish count (raises next publish's AP cost)
+  p.prestige += pat.prestige; p.money += pat.money; p.pubs += 1;     // research token → prestige
   G.log.push(`publish ${pat.label} +${pat.prestige}P +${pat.money}$`);
   // the combo stays in the table (always available) — only the shared CARDS are consumed
 };
@@ -677,7 +677,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const p = G.players[ctx.currentPlayer], tile = G.map[p.pos], cit = citablePool(G, ctx.currentPlayer);
   // publish from the shared open pool at a research site — claim the most valuable open question the pool can complete (your hand was force-stashed here on arrival)
   const pool = pubPool(G, p);
-  if (pool && p.ap >= publishCost(p.pubs)) { const avail = pool.concat(p.samples);   // publish proportional to payout: the most valuable assemblable combo (ignoring cheap plain pairs)
+  if (pool && p.pubTurn !== ctx.turn) { const avail = pool.concat(p.samples);   // ≤1 publish/turn; publish proportional to payout: the most valuable assemblable combo (ignoring cheap plain pairs)
     for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (botPursue(pat) && assemble(G, pat.id, avail, [])) return { move: 'publish', args: [pat.id] }; }
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
   if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // invest spare money in gear: best affordable generic kit
@@ -768,7 +768,7 @@ export const enumerate = (G: GState, ctx: any) => {
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
-  if (pool && p.ap >= publishCost(p.pubs)) { const avail = pool.concat(p.samples); G.goals.forEach(pat => { if (assemble(G, pat.id, avail, [])) out.push({ move: 'publish', args: [pat.id] }); }); }
+  if (pool && p.pubTurn !== ctx.turn) { const avail = pool.concat(p.samples); G.goals.forEach(pat => { if (assemble(G, pat.id, avail, [])) out.push({ move: 'publish', args: [pat.id] }); }); }
   out.push({ event: 'endTurn' });
   return out;
 };
@@ -825,7 +825,7 @@ export const Expedition: Game<GState> = {
     const roleBag = [...ROLES]; { const rr = prng((seed ^ 0x2545f491) >>> 0); for (let i = roleBag.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [roleBag[i], roleBag[j]] = [roleBag[j], roleBag[i]]; } }   // specialist roles shuffled per match (not fixed by seat)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
-        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, gear: [], boat: false, role: roleBag[i % roleBag.length] }])),
+        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, pubTurn: -1, gear: [], boat: false, role: roleBag[i % roleBag.length] }])),
       map, cols: N, rows: N, base: start,
       vehicles,
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand), water: buildPool('water', colorRand) },
