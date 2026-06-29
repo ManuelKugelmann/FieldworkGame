@@ -687,13 +687,17 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   }
   if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
-  if (p.ap >= 1 && tile.finds.length) {   // catalogue the find that best advances an open project — and, early, lean on your specialty
-    const myDisc = ROLE_DISC[p.role], early = p.samples.length < 4 ? 12 : 4;   // focus own discipline early (where the +3 pays off), fade later
+  if (p.ap >= 1 && tile.finds.length) {   // catalogue the find that best builds toward a HIGH-PAYOUT combo (value-weighted, not just any completion) — and, early, lean on your specialty
+    const myDisc = ROLE_DISC[p.role], early = p.samples.length < 4 ? 4 : 1;   // focus own discipline early (where the +3 pays off), fade later
     let bestI = 0, bestScore = -1;
     for (let i = 0; i < tile.finds.length; i++) {
       const trial = [...p.samples, tile.finds[i]];
       let goal = 0;
-      for (const g of G.goals) { const r = evalGoal(g, trial, cit); goal = Math.max(goal, (r.ok ? 1000 : 0) + r.slots.filter(s => s.state === 'have').length * 10 + g.prestige); }
+      for (const g of G.goals) {   // value of progress toward g = its prestige scaled by how complete the find leaves it, + a completion bonus → favours building valuable hands over finishing cheap pairs
+        const r = evalGoal(g, trial, cit);
+        const have = r.slots.filter(s => s.state === 'have').length, need = g.parts.reduce((s, pt) => s + pt.count, 0);
+        goal = Math.max(goal, g.prestige * (have / need) + (r.ok ? g.prestige : 0));
+      }
       const score = goal + (tile.finds[i].type === myDisc ? early : 0);   // prefer your specialty (more so while your hand is still small)
       if (score > bestScore) { bestScore = score; bestI = i; }
     }
