@@ -704,7 +704,19 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     return { move: 'catalogue', args: [bestI] };
   }
   const hasHand = G.goals.some(g => botPursue(g) && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile (≥ colour+symbol pair) project → head to a base to publish it; else forage
-  const goalPred = hasHand ? isResearch : forageTarget;   // forage toward the nearest finds (the per-tile catalogue choice is already value-weighted) — NO biome bias, which over-concentrated specialists on uneven-abundance biomes and broke role balance
+  // weaker E: nudge forage toward biomes yielding the card that FINISHES your best already-started combo (demand-driven from inventory — not your specialty, so it doesn't over-concentrate on uneven biomes)
+  const goalPred = hasHand ? isResearch : (() => {
+    let nd: DType | undefined, nc: number | undefined, bestV = 0;
+    for (const g of G.goals) {
+      if (!botPursue(g)) continue;
+      const r = evalGoal(g, p.samples, cit);
+      const have = r.slots.filter(s => s.state === 'have').length, need = g.parts.reduce((s, pt) => s + pt.count, 0);
+      if (have > 0 && have < need) { const v = g.prestige * have / need; if (v > bestV) { bestV = v; const miss = r.slots.find(s => s.state !== 'have'); nd = miss?.type; nc = miss?.color; } }
+    }
+    if (bestV === 0) return forageTarget;   // nothing started → just take the nearest finds
+    const rich = (t: Tile) => forageTarget(t) && !!WEIGHTS[t.terrain] && (nd === undefined || WEIGHTS[t.terrain]![nd] >= 3) && (nc === undefined || BIOME_COLOR[t.terrain] === nc);
+    return stepToward(G, p.pos, rich, p.boat) >= 0 ? rich : forageTarget;
+  })();
   if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
     const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
