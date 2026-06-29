@@ -725,7 +725,7 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const minPub = (variant === 'greedy' || variant === 'ev') ? 1 : 3;   // DEFAULT = hold (build ≥3-prestige before publishing). 'greedy'/'ev' publish any combo (ev skips un-catalogueable finds, so it needs to bootstrap money→gear)
   const hasHand = G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // hand makes a worthwhile project → head to a base to publish; else forage
   const goalPred = hasHand ? isResearch
-    : variant === 'ev' ? ((t: Tile) => tileForageValue(G, p, cit, t) > 0)   // 'ev': forage toward the nearest VALUABLE find (cataloguable for me AND advances a combo) — skips worthless finds; nearest keeps it stable (no target oscillation)
+    : variant === 'ev' ? ((t: Tile) => t.finds.length ? tileForageValue(G, p, cit, t) > 0 : forageTarget(t))   // 'ev': skip worthless REVEALED finds (not cataloguable / no combo), but explore un-entered tiles by proximity like hold (don't chase estimated phantom value)
     : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
     let nd: DType | undefined, nc: number | undefined, bestV = 0;
     for (const g of G.goals) { if (!botPursue(g)) continue; const r = evalGoal(g, p.samples, cit);
