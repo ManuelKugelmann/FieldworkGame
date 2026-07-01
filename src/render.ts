@@ -146,7 +146,7 @@ export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: Player
   if (a.move === 'pickup') { const s = a.args![0]; const e = typeof s === 'number' ? tile.equipment[s] : undefined;
     return !e || e.kind === 'boat' ? 'Pick up boat' : `Pick up ${gearIcon(e.gear!)}`; }
   if (a.move === 'helilift') return `Helilift → base (−${money$(12)})`;
-  if (a.move === 'discard') { const d = p?.samples[a.args![0] as number]; return d ? `Drop ${prettyFind(d)}` : null; }   // drop a carried specimen back as a revealed, unclaimed find
+  if (a.move === 'discard') { const d = p?.samples[a.args![0] as number]; return d ? `Deposit ${prettyFind(d)}` : null; }   // add a carried specimen to the shared pool (research site only)
   if (a.event === 'endTurn') return 'End turn';
   return null;
 }

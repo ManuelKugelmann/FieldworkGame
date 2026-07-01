@@ -557,12 +557,12 @@ const pickup: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   
   const g = eq.splice(idx, 1)[0].gear!; p.gear.push(g);
   G.log.push(`Player ${+ctx.currentPlayer + 1} pickup ${gearTag(g)} ${where}`);
 };
-// DROP a specimen back onto the current tile as a revealed, UNCLAIMED token (a normal find). No free take-back: to reclaim it (yours or anyone's) you must re-catalogue it like any other find — and a failed roll can destroy it. Frees a specimen slot.
+// DEPOSIT a carried specimen into the shared research pool (only at a research site / in the lab, where the pool exists). Specimens are never dropped loose on the ground — they only ever go INTO the pool. Frees a specimen slot without a full publish; the card becomes a community card anyone can publish from.
 const discard: Move<GState> = ({ G, ctx }, sel: number) => {
-  const p = G.players[ctx.currentPlayer];
-  if (G.epilogue || sel < 0 || sel >= p.samples.length) return INVALID_MOVE;
-  const d = p.samples.splice(sel, 1)[0]; G.map[p.pos].finds.push(d);
-  G.log.push(`Player ${+ctx.currentPlayer + 1} drop ${d.type}${d.color} @${p.pos}`);
+  const p = G.players[ctx.currentPlayer], pool = pubPool(G, p);
+  if (!pool || sel < 0 || sel >= p.samples.length) return INVALID_MOVE;
+  const d = p.samples.splice(sel, 1)[0]; pool.push(d);
+  G.log.push(`Player ${+ctx.currentPlayer + 1} deposit ${d.type}${d.color} → pool`);
 };
 
 // ---- research projects: a SHARED, CONSUMED pool of open questions (first to publish CLAIMS it; the pool refills from a per-match deck).
@@ -849,7 +849,7 @@ export const enumerate = (G: GState, ctx: any) => {
       if (e.kind === 'boat' && !p.boat) out.push({ move: 'pickup', args: [i] });
       if (e.kind === 'gear' && hasRoom(p)) out.push({ move: 'pickup', args: [i] });
     });
-    p.samples.forEach((_, i) => out.push({ move: 'discard', args: [i] }));                    // drop a specimen back as a revealed, unclaimed token (re-catalogue to reclaim it — no free take-back)
+    if (pubPool(G, p)) p.samples.forEach((_, i) => out.push({ move: 'discard', args: [i] }));   // at a research site: deposit a specimen into the shared pool to free a slot (specimens are never dropped loose)
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
