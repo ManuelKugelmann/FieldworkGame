@@ -125,7 +125,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
     const apBox = isCur ? ` <span class="ap">${p.ap} AP</span>` : '';
     const pubBox = isCur && p.pubTurn !== ctx.turn ? ` 📜<span class="ap">can publish</span>` : '';
     const dot = '<span style="opacity:.35">·</span>';   // placeholder when empty
-    return `<div class="${c}"><div class="who" style="color:${playerColor(p.role)}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${apBox}${pubBox}</div>` +
+    return `<div class="${c}"><div class="who" style="color:${playerColor(p.role)}">Player ${+id + 1} ${roleBadge(p.role)}${driving}${p.boat ? ' 🛶' : ''}${p.camp ? ' 🏕️' : ''}${apBox}${pubBox}</div>` +
       `<div class="stat">🎓 ${p.prestige} · ${money$(p.money)} · <b>Σ ${vp}</b></div>` +
       `<div class="inv">${specimens || dot}${specEmpties}</div><div class="inv">${roleBonusChip(p.role)}${gearChips(p.gear)}${empties}</div></div>`;
   }).join('');
@@ -148,7 +148,7 @@ function renderHud(G: GState, ctx: any, legal: Action[]) {
       if (a.move === 'board' && label) label = G.vehicles[a.args![0] as number]?.kind === 'motorboat' ? 'Board boat' : 'Board car';
       return { a, label };
     }).filter((x): x is { a: Action; label: string } => x.label !== null);
-    const order: Record<string, number> = { catalogue: 0, publish: 1, buy: 2, board: 3, leave: 4, pickup: 5, discard: 6, drop: 6, stash: 7, unstash: 8 };
+    const order: Record<string, number> = { catalogue: 0, publish: 1, deploy: 1.5, buy: 2, board: 3, leave: 4, pickup: 5, discard: 6, drop: 6, stash: 7, unstash: 8 };
     const rank = (a: Action) => a.event === 'endTurn' ? 99 : a.move === 'helilift' ? 90 : (order[a.move ?? ''] ?? 50);
     const isRight = (a: Action) => a.move === 'helilift' || a.event === 'endTurn';
     labeled.sort((p, q) => rank(p.a) - rank(q.a));

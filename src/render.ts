@@ -74,7 +74,7 @@ const BROOK_LINE = '#4aa3d2';      // brook (boat-only) edge
 const RIVER_LINE = '#8fd0ef';      // river channel linkage (between water tiles) — banks are the unlinked edges
 const CLIFF_FILL = 'rgba(8,7,6,0.7)';   // cliff band — a dark in-tile marker covering ~1/3 of the affected tile side (no border line)
 const EQUIP_COLOR = '#cfd6c8';
-const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🏢', remote: '⛺', village: '🏘️', riverVillage: '🏠' };   // research base (building) · frontier · village (market) · little river house
+const HOTSPOT_LABEL: Record<NonNullable<Tile['hotspot']>, string> = { base: '🏢', remote: '⛺', village: '🏘️', riverVillage: '🏠', camp: '🏕️' };   // research base (building) · frontier · village (market) · little river house · deployed field camp
 const BIOME_ICON: Partial<Record<Tile['terrain'], string>> = { grassland: '🌾', jungle: '🌴', rocky: '🪨', ruins: '🏛️', water: '🌊' };   // small per-tile biome marker (corner)
 // discovery BACK-SIDE / pool colour — a brighter tint of the biome's tile colour (so the back reads as "from this biome")
 const BIOME_POOL: Partial<Record<Tile['terrain'], string>> = { grassland: '#b2c43f', jungle: '#2e8f74', rocky: '#b6b6c2', ruins: '#cbb46a', water: '#3f7593' };  // brighter biome tints (grass yellow-green · forest greenish-teal · rock silver · ruins beige-gold · water swampy blue)
@@ -147,6 +147,7 @@ export function actionLabel(a: Action, tile: Tile, goals?: Pattern[], p?: Player
     return !e || e.kind === 'boat' ? 'Pick up boat' : `Pick up ${gearIcon(e.gear!)}`; }
   if (a.move === 'helilift') return `Helilift → base (−${money$(12)})`;
   if (a.move === 'discard') { const d = p?.samples[a.args![0] as number]; return d ? `Deposit ${prettyFind(d)}` : null; }   // add a carried specimen to the shared pool (research site only)
+  if (a.move === 'deploy') return '🏕️ Deploy field camp';   // one-shot: current tile becomes a forward research base
   if (a.event === 'endTurn') return 'End turn';
   return null;
 }
@@ -155,10 +156,10 @@ export function describeTile(G: GState, i: number): string {
   const t = G.map[i];
   const bits = [`#${i}`, t.bridge ? `${t.bridge} bridge` : t.terrain];
   if (t.roads) bits.push('road');
-  if (t.hotspot) bits.push({ base: 'research base', remote: 'frontier base', village: 'village', riverVillage: 'river village' }[t.hotspot]);
+  if (t.hotspot) bits.push({ base: 'research base', remote: 'frontier base', village: 'village', riverVillage: 'river village', camp: 'field camp' }[t.hotspot]);
   if (t.smallRivers) bits.push('brook');
   if (t.blocked) bits.push('cliff edge');
-  const research = t.hotspot === 'base' || t.hotspot === 'remote';
+  const research = t.hotspot === 'base' || t.hotspot === 'remote' || t.hotspot === 'camp';
   const cars = G.vehicles.filter(v => v.pos === i);
   for (const car of cars) bits.push(car.driver !== null ? `${car.kind} (Player ${+car.driver + 1})` : `${car.kind} (empty)`);
   const items = t.equipment.map(e => e.kind === 'boat' ? '🛶' : gearIcon(e.gear!));
@@ -208,7 +209,7 @@ export interface PatternPreview { name: string; label: string; reward: string; c
 
 export function publishPreviews(G: GState, pid: string): PatternPreview[] {
   const me = G.players[pid], here = G.map[me.pos];
-  const atBase = G.epilogue || here.hotspot === 'base' || here.hotspot === 'remote';   // at a research site you publish from your hand + the shared community pool
+  const atBase = G.epilogue || here.hotspot === 'base' || here.hotspot === 'remote' || here.hotspot === 'camp';   // at a research site (incl. a deployed field camp) you publish from your hand + the shared community pool
   const owned = atBase ? me.samples.concat(G.map[G.base].cache) : me.samples;
   const citable: Discovery[] = [];
   for (const id in G.players) if (id !== pid) citable.push(...G.players[id].published);

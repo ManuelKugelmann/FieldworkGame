@@ -14,7 +14,7 @@ export type TileEventKind = 'rockslide' | 'animalAttack' | 'bushthieves' | 'help
 export interface TileEvent { event: TileEventKind; }
 export type Card = Discovery | TileEvent;                          // a stack holds specimens + events mixed
 const isEvent = (c: Card): c is TileEvent => 'event' in c;
-export type Hotspot = 'base' | 'remote' | 'village' | 'riverVillage';  // POIs: road base (market + research), frontier (remote) research site, road market (village), little river-bank village (market; home of the shared boat)
+export type Hotspot = 'base' | 'remote' | 'village' | 'riverVillage' | 'camp';  // POIs: road base (market + research), frontier (remote) research site, road market (village), little river-bank village (market; home of the shared boat), deployed field camp (a player-placed forward research base)
 export type EquipKind = 'gear' | 'boat';              // carryable items cached on a tile (droppable/pickup-able)
 export interface Equip { kind: EquipKind; gear?: GearItem; }   // a cached item: a boat, or a gear kit (carries its full GearItem)
 export type VehicleKind = 'car' | 'motorboat';   // car = positioned road vehicle; motorboat = positioned LARGE-RIVER vehicle (fast channel travel, board from the bank / dock to the bank)
@@ -23,7 +23,7 @@ export interface Vehicle { pos: number; driver: string | null; kind: VehicleKind
 export type GearKind = 'g1' | 'g2' | 'g3' | 'field';
 export interface GearItem { kind: GearKind; field?: DType; }   // field = the discipline a 'field' kit boosts
 export interface Tile { terrain: Terrain; bridge?: Bridge; roads: number; paths: number; smallRivers: number; blocked: number; rivers: number; hotspot?: Hotspot; richness: number; revealed: boolean; finds: Discovery[]; equipment: Equip[]; cache: Discovery[]; }  // cache = discoveries DROPPED here (face-up, free to pick up); roads/paths/smallRivers(brooks)/blocked(cliffs)/rivers(channel linkage) = edge bitmasks N1 E2 S4 W8
-export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; pubTurn: number; gear: GearItem[]; boat: boolean; role: Role; }  // pubTurn = ctx.turn of last publish (≤ 1 publish/turn); role = specialist (permanent catalogue bonus for its discipline)
+export interface PlayerS { ap: number; pos: number; money: number; samples: Discovery[]; published: Discovery[]; prestige: number; pubs: number; pubTurn: number; gear: GearItem[]; boat: boolean; camp: boolean; role: Role; }  // camp = still carries an undeployed field camp (one per player, deployable once → a forward research base); pubTurn = ctx.turn of last publish (≤ 1 publish/turn); role = specialist (permanent catalogue bonus for its discipline)
 export interface GState {
   players: Record<string, PlayerS>;
   map: Tile[]; cols: number; rows: number; base: number;   // main hub (road) — helilift target
@@ -114,7 +114,7 @@ export function targetAP(G: GState, pid: string, a: { move?: string; args?: unkn
   return 0;
 }
 // m4 vehicles: a car moves up to 3 road tiles per AP (road edges only) — not yet implemented
-const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote';  // base AND frontier are research terminals — BUT both read/write ONE shared pool (the base cache; comms established between the sites)
+const isResearch = (t: Tile) => t.hotspot === 'base' || t.hotspot === 'remote' || t.hotspot === 'camp';  // base, frontier AND any deployed field camp are research terminals — all read/write ONE shared pool (the base cache; comms established between the sites)
 // the open pool you publish from: the lab season pools everything at base; in the field it's the site you stand on (or none)
 // the pool you publish from: in the LAB season the shared base pool (you dumped your hand into it on entry, and publish ONE hand from it); in the field the open pool at the research site you're on
 const pubPool = (G: GState, p: PlayerS): Discovery[] | null => (G.epilogue || isResearch(G.map[p.pos])) ? G.map[G.base].cache : null;   // the single shared pool (base cache), reachable from base OR frontier
@@ -557,6 +557,13 @@ const pickup: Move<GState> = ({ G, ctx }, sel: 'boat' | number = 'boat') => {   
   const g = eq.splice(idx, 1)[0].gear!; p.gear.push(g);
   G.log.push(`Player ${+ctx.currentPlayer + 1} pickup ${gearTag(g)} ${where}`);
 };
+// DEPLOY your one field camp on the current land tile — turns it into a research base (a forward publish/deposit terminal into the shared pool) usable by EVERYONE. One-shot per player: consumed on deploy.
+const deploy: Move<GState> = ({ G, ctx }) => {
+  const p = G.players[ctx.currentPlayer], tile = G.map[p.pos];
+  if (G.epilogue || !p.camp || !isLandT(tile) || tile.hotspot) return INVALID_MOVE;   // one per player; only on an empty (no-hotspot) land tile
+  p.camp = false; tile.hotspot = 'camp';
+  G.log.push(`Player ${+ctx.currentPlayer + 1} deploy field camp @${p.pos} — forward research base`);
+};
 // DEPOSIT a carried specimen into the shared research pool (only at a research site / in the lab, where the pool exists). Specimens are never dropped loose on the ground — they only ever go INTO the pool. Frees a specimen slot without a full publish; the card becomes a community card anyone can publish from.
 const discard: Move<GState> = ({ G, ctx }, sel: number) => {
   const p = G.players[ctx.currentPlayer], pool = pubPool(G, p);
@@ -782,6 +789,8 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const variant = BOTCFG.variant[+ctx.currentPlayer] || '';   // strategy variant (head-to-head exploration only)
   const minPub = (variant === 'greedy' || variant === 'ev') ? 1 : 3;   // DEFAULT = hold (build ≥3-prestige before publishing). 'greedy'/'ev' publish any combo (ev skips un-catalogueable finds, so it needs to bootstrap money→gear)
   const hasHand = handFull(p) || G.goals.some(g => botPursue(g) && g.prestige >= minPub && assemble(G, g.id, p.samples, cit));   // a worthwhile project — OR a full specimen hand that must be cleared — sends you to a research site to publish; else forage
+  if (hasHand && p.camp && isLandT(tile) && !tile.hotspot && nearestDist(goalCells(G, isResearch), p.pos) > 4)
+    return { move: 'deploy', args: [] };   // far from any base with a hand to publish → plant your forward research camp here and publish on the spot instead of trekking back
   const goalPred = hasHand ? isResearch
     : variant === 'ev' ? ((t: Tile) => t.finds.length ? tileForageValue(G, p, cit, t) > 0 : forageTarget(t))   // 'ev' goal set (for car / helilift reach): worthwhile revealed finds + un-entered rich tiles. The foot step itself uses evStep below (EV-per-AP, known-preferred), not nearest.
     : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
@@ -850,6 +859,7 @@ export const enumerate = (G: GState, ctx: any) => {
       if (e.kind === 'gear' && hasRoom(p)) out.push({ move: 'pickup', args: [i] });
     });
     if (pubPool(G, p)) p.samples.forEach((_, i) => out.push({ move: 'discard', args: [i] }));   // at a research site: deposit a specimen into the shared pool to free a slot (specimens are never dropped loose)
+    if (p.camp && isLandT(tile) && !tile.hotspot) out.push({ move: 'deploy', args: [] });        // deploy your field camp here → a forward research base
     if (p.ap >= 1 && p.pos !== G.base) out.push({ move: 'helilift', args: [] });
   }
   const pool = pubPool(G, p);   // publish from the shared open pool at a research site (or the lab pool in the epilogue)
@@ -910,7 +920,7 @@ export const Expedition: Game<GState> = {
     const roleBag = [...ROLES]; { const rr = prng((seed ^ 0x2545f491) >>> 0); for (let i = roleBag.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [roleBag[i], roleBag[j]] = [roleBag[j], roleBag[i]]; } }   // specialist roles shuffled per match (not fixed by seat)
     return {
       players: Object.fromEntries(Array.from({ length: ctx.numPlayers }, (_, i) =>
-        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, pubTurn: -1, gear: [], boat: false, role: roleBag[i % roleBag.length] }])),
+        [String(i), { ap: START_AP, pos: start, money: 0, samples: [], published: [], prestige: 0, pubs: 0, pubTurn: -1, gear: [], boat: false, camp: true, role: roleBag[i % roleBag.length] }])),
       map, cols: N, rows: N, base: start,
       vehicles,
       pools: { grassland: buildPool('grassland', colorRand), jungle: buildPool('jungle', colorRand), rocky: buildPool('rocky', colorRand), ruins: buildPool('ruins', colorRand), water: buildPool('water', colorRand) },
@@ -918,7 +928,7 @@ export const Expedition: Game<GState> = {
       events: buildDeck(seed), monsoon: 0, epilogue: false, labLeft: 0, log: ['setup'], roundEvent: '',
     };
   },
-  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, discard },
+  moves: { move, catalogue, publish, buy, drive, boatRun, helilift, board, leave, drop, pickup, discard, deploy },
   // EXPERIMENTAL knob — lab-season frontier merge: 'last' (only last player), 'all' (at lab start, everyone), 'none'
   turn: {
     onBegin: ({ G, ctx, random }) => {
