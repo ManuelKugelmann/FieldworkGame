@@ -953,7 +953,7 @@ export const Expedition: Game<GState> = {
         p.ap = 1;   // exactly enough AP for ONE publish this lab turn
       } else {
         const round = Math.floor((ctx.turn - 1) / ctx.numPlayers), pos = (ctx.turn - 1) % ctx.numPlayers;
-        const base = (BAL.round0Ramp && round === 0) ? Math.max(1, START_AP - Math.round((ctx.numPlayers - 1 - pos) * 2 / 3)) : START_AP;   // round-1 ramp, integer (4p: 2/3/3/4 by play order) — opener handicapped most, fading to a full turn for the last; counters the round-0 first-mover edge
+        const base = (BAL.round0Ramp && round === 0 && ctx.numPlayers > 1) ? 2 + Math.round(pos * (START_AP - 2) / (ctx.numPlayers - 1)) : START_AP;   // round-1 ramp, linear 2→START_AP by play order (2p 2/4 · 3p 2/3/4 · 4p 2/3/3/4) — opener handicapped most, fading to a full turn for the last; counters the round-0 first-mover edge
         p.ap = base + (G.roundEvent === 'tailwind' ? 1 : 0);
       }
     },
