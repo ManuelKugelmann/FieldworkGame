@@ -754,7 +754,10 @@ function vehicleStep(G: GState, ctx: any, goals: number[]): { move: string; args
   const here = nearestDist(goals, p.pos);
   if (here < 3) return null;   // on foot: only bother boarding when the goal is far enough that the network saves real distance
   const vi = G.vehicles.findIndex(v => v.driver === null && (v.pos === p.pos || (v.kind === 'motorboat' && nbrs(p.pos).includes(v.pos))));   // parked car underfoot, or a moored motorboat off this bank
-  if (vi >= 0 && netReach(G.vehicles[vi], G.vehicles[vi].pos, vSteps(G.vehicles[vi])).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
+  if (vi >= 0) {
+    const v = G.vehicles[vi], need = v.kind === 'motorboat' ? here - 1 : here;   // a motorboat ride must gain ≥2 tiles — crossing the river for a marginal gain strands you on the far bank
+    if (netReach(v, v.pos, vSteps(v)).some(c => nearestDist(goals, c) < need)) return { move: 'board', args: [vi] };
+  }
   return null;
 }
 // the bot ignores cheap PLAIN pairs (one axis only) — its minimum target is a colour+symbol pair (both axes pinned)
@@ -829,7 +832,20 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
     }
     const nx = (variant === 'ev' && !hasHand) ? evStep(G, p, cit, p.boat) : stepToward(G, p.pos, goalPred, p.boat);   // 'ev': go to the best EV-per-AP tile (known-preferred); others: nearest goal tile (stable)
     if (nx >= 0) { if (p.ap >= (p.boat ? boatCost : cost)(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // reachable — step now, else wait for AP next turn
-    else if (hasHand && p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };  // genuinely no hub reachable → fly home
+    else if (hasHand && p.ap >= 1 && p.pos !== G.base) {   // no research site reachable on this graph — stranded (usually on the river's far bank)
+      if (!p.boat) {                                        // before burning a helilift: fetch a reachable idle boat and ride/carry it across
+        if (tile.equipment.some(e => e.kind === 'boat')) return { move: 'pickup', args: ['boat'] };   // a cached canoe underfoot → take it (skip the forage-count gate)
+        const mvi = p.money >= BOARD_COST ? G.vehicles.findIndex(v => v.kind === 'motorboat' && v.driver === null && (v.pos === p.pos || nbrs(p.pos).includes(v.pos))) : -1;
+        if (mvi >= 0) return { move: 'board', args: [mvi] };   // a moored motorboat off this bank → board it; the ride home crosses the river
+        const boatAt = new Set<Tile>();                        // walk to the nearest fetchable boat: any bank tile beside an idle motorboat, or a tile holding a dropped canoe
+        G.vehicles.forEach(v => { if (v.kind === 'motorboat' && v.driver === null) nbrs(v.pos).forEach(j => { if (isLandT(G.map[j]) && !onBlocked(G.map, v.pos, j)) boatAt.add(G.map[j]); }); });
+        G.map.forEach(t => { if (t.equipment.some(e => e.kind === 'boat')) boatAt.add(t); });
+        const bx = stepToward(G, p.pos, t => boatAt.has(t), false);
+        if (bx >= 0 && p.ap >= cost(G.map, p.pos, bx)) return { move: 'move', args: [bx] };
+        if (bx >= 0) return { event: 'endTurn' };              // a boat is walkable but this turn's AP is spent — wait, don't fly
+      }
+      return { move: 'helilift', args: [] };                   // genuinely nothing reachable → fly home
+    }
   }
   if (myVehicle(G, ctx.currentPlayer)) return { move: 'leave', args: [] };                   // still driving with nothing better → step out (never foot-move behind the wheel)
   const can = p.boat ? canBoat : canMove, wt = p.boat ? boatCost : cost;                    // fallback: any affordable step (don't stall)
