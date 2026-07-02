@@ -82,11 +82,12 @@ const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph
 const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 0.5 : 1;  // path/road edge = 0.5 AP; any other (regular) tile = 1 AP
 const canBoat = (map: Tile[], a: number, b: number) => {           // BOAT graph (player carrying the boat): water + brooks, and still walks dry land
   if (onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b])) return false;
-  if (map[a].bridge || map[b].bridge) return onPath(map, a, b);
-  return true;                                                     // land↔land, land↔water, water↔water
+  if (map[a].terrain === 'water' && map[b].terrain === 'water') return true;   // open channel: a boat passes UNDER bridges (a washed-out bridge must never trap a boater on the river)
+  if (map[a].bridge || map[b].bridge) return onPath(map, a, b);    // climbing between a bridge deck and LAND still needs the crossing edge
+  return true;                                                     // land↔land, land↔water
 };
-const boatCost = (map: Tile[], a: number, b: number) =>             // by canoe: river/brook tile = 0.25 AP; otherwise foot cost (0.5 path / 1 regular)
-  (plainRiver(map[a]) || plainRiver(map[b]) || (map[a].smallRivers & dirBit(a, b))) ? 0.25 : (onPath(map, a, b) ? 0.5 : 1);
+const boatCost = (map: Tile[], a: number, b: number) =>             // by canoe: channel (incl. under bridges) / embark / brook = 0.25 AP; otherwise foot cost (0.5 path / 1 regular)
+  ((map[a].terrain === 'water' && map[b].terrain === 'water') || plainRiver(map[a]) || plainRiver(map[b]) || (map[a].smallRivers & dirBit(a, b))) ? 0.25 : (onPath(map, a, b) ? 0.5 : 1);
 export const apCost = (G: GState, from: number, to: number, boat: boolean) => (boat ? boatCost : cost)(G.map, from, to);  // AP for a foot/boat step (UI cost hint)
 // ---- generic link traversal: a vehicle rides ONE edge kind up to N steps/AP. roads→car, river channel→boat — same code, different `k`. ----
 function linkReach(map: Tile[], from: number, maxSteps: number, k: EdgeKind): number[] {   // cells within maxSteps along link `k`
@@ -748,6 +749,10 @@ function vehicleStep(G: GState, ctx: any, goals: number[]): { move: string; args
       for (const c of netReach(mine, mine.pos, Math.floor(p.ap * vSteps(mine)))) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
       if (best >= 0) return { move: 'drive', args: [best] };
     }
+    if (mine.kind === 'motorboat' && p.ap > 0 && !nbrs(p.pos).some(j => isLandT(G.map[j]) && !onBlocked(G.map, p.pos, j))) {   // mid-channel with no bank to dock on (leave would be INVALID) → drive to the nearest dockable channel tile
+      const cand = netReach(mine, mine.pos, Math.floor(p.ap * vSteps(mine))).filter(c => nbrs(c).some(j => isLandT(G.map[j]) && !onBlocked(G.map, c, j)));
+      if (cand.length) return { move: 'drive', args: [cand.sort((x, y) => nearestDist(goals, x) - nearestDist(goals, y))[0]] };
+    }
     return { move: 'leave', args: [] };   // out of AP / nothing closer on the network → step out (a motorboat leave docks ashore)
   }
   if (!goals.length || p.ap < 1 || p.money < BOARD_COST) return null;
@@ -932,6 +937,8 @@ function applyEvent(G: GState, id: string, random: any) {
       const { i } = br[random.Die(br.length) - 1];
       for (const j of nbrs(i)) { const rev = dirBit(j, i); G.map[j].roads &= ~rev; G.map[j].paths &= ~rev; }
       G.map[i].roads = 0; G.map[i].paths = 0;                         // no edge to board → crossing unusable
+      const bank = nbrs(i).find(j => isLandT(G.map[j]) && !onBlocked(G.map, i, j));   // anyone standing on the bridge is washed ashore (never trap a walker mid-river)
+      if (bank !== undefined) for (const pl of Object.values(G.players)) if (pl.pos === i && !pl.boat) pl.pos = bank;
     }
   } else if (id === 'monsoon') G.monsoon += 1;
   G.log.push(`event:${id}${id === 'monsoon' ? ` ⛈${G.monsoon}/${MONSOON_END}` : ''}`);

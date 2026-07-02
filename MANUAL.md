@@ -52,7 +52,7 @@ You get **4 AP** per turn (in the very first round, later seats get a little mor
 ## 4. Moving around
 
 - **On foot** the river is a hard wall — cross at bridges only. Cliffs block everyone. One exception: you may wade a single step onto a water tile to fetch a **beached boat** (a dropped canoe or moored motorboat).
-- **Canoe 🛶** — a carried item. While you hold it you may enter water and glide along the river and brooks at 0.25 AP/step, or make fast **boat runs** (4 river tiles per AP). Drop it on any tile for a teammate; pick it up again later. It's blocked by the waterfall and cliffs.
+- **Canoe 🛶** — a carried item. While you hold it you may enter water and glide along the river and brooks at 0.25 AP/step, or make fast **boat runs** (4 river tiles per AP). Boats pass freely under bridges. Drop it on any tile for a teammate; pick it up again later. It's blocked by the waterfall and cliffs.
 - **Car 🚗** — a shared vehicle on the board (one at the base, one at the village). Stand on it, pay **10k$** to board, then drive up to 4 road tiles per AP. Roads only. Stepping off is free — any foot move auto-dismounts, and the car stays where you left it.
 - **Motorboat 🛥️** — like the car, but for the **river channel**: board it from an adjacent bank (10k$), drive 4 river tiles per AP, and step ashore to dock (free). One is moored at each river village.
 - **Helilift 🚁** — from anywhere: 1 AP and 120k$ flies you home to the base. If you can't pay it all, the shortfall converts to **negative prestige** (40k$ ≈ 1 🎓). It's the emergency exit — expensive on your reputation.
@@ -118,7 +118,7 @@ Unspent money is worth **1 point per 50k$** at the end.
 
 ## 9. The monsoon & the lab season
 
-Each round's opening player draws one global event: usually good (🌬️ tailwind: +1 AP for everyone · 💰 +20k$ each · 🎓 +30k$ each · ☀️ calm), sometimes bad (⛏ a jungle tile turns rocky · 🌊 a bridge washes out — never the last one).
+Each round's opening player draws one global event: usually good (🌬️ tailwind: +1 AP for everyone · 💰 +20k$ each · 🎓 +30k$ each · ☀️ calm), sometimes bad (⛏ a jungle tile turns rocky · 🌊 a bridge washes out — never the last one; anyone standing on it is washed ashore).
 
 **Monsoon cards ⛈ wait at the bottom of the deck.** When they start surfacing, the season is ending — you'll see the count. After the 4th monsoon (at the end of a full round rotation), the field season closes and the **lab season** begins: every player gets **one final indoor turn**, in seat order. The frontier pool merges into the base lab, your hand is dumped in, and you may make **one last publish** from everything gathered. Then scores are tallied.
 

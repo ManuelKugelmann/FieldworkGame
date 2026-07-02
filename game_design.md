@@ -47,7 +47,7 @@ Biomes are **balanced** (grassland/rocky carved generously so jungle doesn't dom
 ## Movement (`START_AP = 4`/turn)
 
 - **Foot** — **0.5 AP** on a path/road edge, **1 AP** off-path. Open water is impassable without a boat — except **wading** one step onto/off a water tile holding a beached boat (canoe or moored motorboat), at normal foot cost.
-- **Canoe** (the shared carried **boat**, 🛶) — while carried: enter water tiles, and river/brook steps cost **0.25 AP**; a **boat run** covers `BOAT_STEPS = 4` river-channel tiles per AP. Carryable, droppable on any tile, one starts at each river village.
+- **Canoe** (the shared carried **boat**, 🛶) — while carried: enter water tiles, and river/brook steps cost **0.25 AP**; a **boat run** covers `BOAT_STEPS = 4` river-channel tiles per AP. Boats pass freely **under bridges** (water↔water is always open channel — climbing between a bridge deck and land still needs the crossing edge). Carryable, droppable on any tile, one starts at each river village.
 - **Car** (🚗) — positioned road vehicle: board for **1 money**, drive up to `CAR_STEPS = 4` road tiles/AP (0.25 AP/tile), leave free (a foot move auto-dismounts). Two on the board (base + village). **Not buyable.**
 - **Motorboat** (🛥) — positioned **large-river** vehicle: board from the bank (1 money), drive `MOTORBOAT_STEPS = 4` channel tiles/AP, dock ashore on leave (free). One moored at each river village. Stopped by the waterfall.
 - **Helilift** (🚁) — 1 AP: airlift to base for `HELILIFT_COST = 12` money; any shortfall converts to **negative prestige** (4 money ≈ 1 prestige). The escape valve for isolation/traps.
@@ -99,7 +99,7 @@ All research terminals — the **base**, the **frontier base**, and every deploy
 
 ## Events & end
 
-One global event **per round**, drawn by the round's start player and affecting everyone: mostly benign (🌬️ tailwind +1 AP all · 💰 cache +2 · 🎓 grant +3 · ☀️ calm) with rare hazards (⛏ rockslide mutates a jungle tile to rocky · 🌊 washout severs a crossing — never the last intact one). Six ⛈ monsoon cards sit at the deck bottom (`BAL.seasonBenign = 26` benign rounds before them); as they surface the storm telegraphs, and after the 4th — on a whole rotation — the **epilogue** begins: the frontier pool merges into the base lab, then each player gets **one indoor lab turn** (P0 first) to dump their hand and publish once, then the game scores.
+One global event **per round**, drawn by the round's start player and affecting everyone: mostly benign (🌬️ tailwind +1 AP all · 💰 cache +2 · 🎓 grant +3 · ☀️ calm) with rare hazards (⛏ rockslide mutates a jungle tile to rocky · 🌊 washout severs a crossing — never the last intact one; anyone standing on the bridge is washed ashore, never trapped). Six ⛈ monsoon cards sit at the deck bottom (`BAL.seasonBenign = 26` benign rounds before them); as they surface the storm telegraphs, and after the 4th — on a whole rotation — the **epilogue** begins: the frontier pool merges into the base lab, then each player gets **one indoor lab turn** (P0 first) to dump their hand and publish once, then the game scores.
 
 **Fairness machinery** (each match fair on its own, no cross-match randomisation): a **wandering start player** (each field round begins with the next seat), a **round-1 AP ramp** (4p: 2/3/3/4 by play order) countering the irreducible first-mover edge, and the whole-rotation season end.
 
