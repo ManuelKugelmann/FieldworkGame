@@ -646,8 +646,8 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   const d = tile.finds[find], tag = `${d.type}${d.color}`, dc = catDC(d.color);   // higher-colour finds are harder to catalogue
   const d1 = random.D6(), d2 = random.D6();
   const roll = d1 + d2 + gearBonus(p.gear, d.type) + (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0);   // gear + specialist bonus (role only for its discipline)
-  if (d1 === 1 && d2 === 1) { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // snake eyes = a botched dig: the find is lost (fauna flees) no matter the bonuses — the ONLY way an attempt destroys it
-  else if (roll >= dc) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll}/${dc} ✓ collected`); }
+  if (roll >= dc) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll}/${dc} ✓ collected`); }
+  else if (d1 === d2) { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // a failing PAIR = a botched dig: the find is lost (fauna flees) — the only way an attempt destroys it. Gear helps twice: it clears the DC and pushes pairs over it.
   else G.log.push(`catalogue ${tag} ${roll}/${dc} ◦ stayed`);   // any other miss just leaves the find on the tile — try again
 };
 
