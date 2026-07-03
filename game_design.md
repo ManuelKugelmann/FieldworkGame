@@ -60,7 +60,7 @@ Cliffs (and rockslide-sealed tiles) hard-block every mover. A **dry validation g
 
 - Each tile holds **at most one discovery**; roads and hotspots hold **none**. The chance a tile bears its find scales with its terrain **richness** (`FIND_CHANCE = 0.75` per richness trial; ruins always deliver).
 - **Flip on enter (free):** entering a tile turns its discovery face-up — you see its discipline + colour. (Tile events resolve here too, see below.)
-- **Catalogue (1 AP + roll):** **2d6 + gear + specialist bonus ≥ difficulty**. Difficulty by colour — 🟪 purple **5** (~83% bare) · ⬜ grey **8** (~42%) · 🟦 navy **13** (impossible bare — needs gear/specialist). Tiers: **≥ DC → collected** into your hand; **within 2 below → stayed** (try again); **lower → fled** (fauna) / **destroyed**.
+- **Catalogue (1 AP + roll):** **2d6 + gear + specialist bonus ≥ difficulty**. Difficulty by colour — 🟪 purple **5** (~83% bare) · ⬜ grey **8** (~42%) · 🟦 navy **13** (impossible bare — needs gear/specialist). Tiers: **snake eyes (1+1) → botched** — the find flees (fauna) / is destroyed regardless of bonuses, the *only* way an attempt loses it; **≥ DC → collected** into your hand; **any other miss → stays** (try again).
 - **Hand cap:** `SPECIMEN_MAX = 8` carried specimens — a full hand blocks cataloguing until you publish or deposit at a research site. Opponents see only the **discipline** of your carried specimens, never the colour (a concealed poker hand).
 
 **Tile-event cards** are mixed into each terrain's stack (~12%, with a per-terrain lean: rocky→rockslide, jungle→animal attack, ruins→bushthieves) and fire **on enter**, at most one of each kind per tile:

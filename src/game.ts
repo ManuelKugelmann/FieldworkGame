@@ -644,10 +644,11 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   if (G.epilogue || p.ap < 1 || handFull(p) || !tile.revealed || find < 0 || find >= tile.finds.length) return INVALID_MOVE;  // a full specimen hand blocks collecting more — publish to clear it
   p.ap -= 1;
   const d = tile.finds[find], tag = `${d.type}${d.color}`, dc = catDC(d.color);   // higher-colour finds are harder to catalogue
-  const roll = random.D6() + random.D6() + gearBonus(p.gear, d.type) + (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0);   // gear + specialist bonus (role only for its discipline)
-  if (roll >= dc) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll}/${dc} ✓ collected`); }
-  else if (roll >= dc - 2) G.log.push(`catalogue ${tag} ${roll}/${dc} ◦ stayed`);   // a near miss (within 2) leaves the find for another attempt — fewer rolls destroy it
-  else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
+  const d1 = random.D6(), d2 = random.D6();
+  const roll = d1 + d2 + gearBonus(p.gear, d.type) + (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0);   // gear + specialist bonus (role only for its discipline)
+  if (d1 === 1 && d2 === 1) { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // snake eyes = a botched dig: the find is lost (fauna flees) no matter the bonuses — the ONLY way an attempt destroys it
+  else if (roll >= dc) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll}/${dc} ✓ collected`); }
+  else G.log.push(`catalogue ${tag} ${roll}/${dc} ◦ stayed`);   // any other miss just leaves the find on the tile — try again
 };
 
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED community pool at this research site (or the lab pool in the epilogue)

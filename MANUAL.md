@@ -69,11 +69,11 @@ To collect a face-up find, **catalogue** it: pay **1 AP** and roll **2d6 + gear 
 | ⬜ grey | **8** | ~42% |
 | 🟦 navy | **13** | **0% — impossible without bonuses** |
 
-- **Meet it** → the specimen goes into your hand.
-- **Miss by 1–2** → it *stays* on the tile; try again.
-- **Miss by more** → it *flees* (animals) or is *destroyed*. Gone for good.
+- **Double ones (🎲1+🎲1)** → a botched dig: the find *flees* (animals) or is *destroyed*, no matter your bonuses. This is the **only** way an attempt loses the find.
+- **Meet the difficulty** → the specimen goes into your hand.
+- **Any other miss** → it *stays* on the tile; try again.
 
-⚠️ Don't roll navy bare — build up gear and lean on your specialty first.
+⚠️ Bare navy still can't succeed — a roll without bonuses only burns AP and risks the botch. Build up gear and lean on your specialty first.
 
 Your hand holds at most **8 specimens**. A full hand blocks cataloguing — publish or deposit to make room. Opponents see *which disciplines* you carry, but not the colours.
 
