@@ -8,7 +8,7 @@ import type { GState } from '../src/game';
 const MATCHES = Number(process.argv[2] ?? 50);
 const STEP_CAP = 20000;
 
-const tally = { publishes: 0, cited: 0, drives: 0, boats: 0, helilifts: 0, gear: 0 };
+const tally = { publishes: 0, drives: 0, motorboatDrives: 0, boatRuns: 0, canoeSteps: 0, helilifts: 0, gear: 0, deposits: 0, deploys: 0 };
 const winScores: number[] = [];
 const spreads: number[] = [];
 
@@ -29,11 +29,15 @@ for (let i = 0; i < MATCHES; i++) {
   const final = client.getState();
   if (!final?.ctx.gameover) { console.warn(`match ${i}: no gameover`); continue; }
   for (const line of final.G.log) {
-    if (line.startsWith('publish')) { tally.publishes++; if (line.includes('(cited')) tally.cited++; }
-    else if (line.startsWith('drive')) tally.drives++;
+    if (line.startsWith('publish')) tally.publishes++;
+    else if (line.startsWith('drive 🛥')) tally.motorboatDrives++;
+    else if (line.startsWith('drive')) tally.drives++;              // car
     else if (line.startsWith('helilift')) tally.helilifts++;
-    else if (line.startsWith('buy gear')) tally.gear++;
-    if (line.includes('🛶')) tally.boats++;   // canoe steps (water/brook crossings)
+    else if (line.startsWith('buy ')) tally.gear++;                 // log says "buy g1" / "buy geo kit"
+    else if (line.includes('🛶→')) tally.boatRuns++;                // fast river-channel runs
+    else if (/\(-[\d.]+ap 🛶\)/.test(line)) tally.canoeSteps++;     // boated single steps (water/brook/land while carrying)
+    else if (line.includes('deposit')) tally.deposits++;
+    else if (line.includes('deploy field camp')) tally.deploys++;
   }
   const scores = (final.ctx.gameover as { scores: Record<string, number> }).scores;
   const vals = Object.values(scores);
@@ -44,10 +48,13 @@ for (let i = 0; i < MATCHES; i++) {
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const n = winScores.length;
 console.log(`sweep over ${n} matches (per-match averages):`);
-console.log(`  publishes : ${(tally.publishes / n).toFixed(2)}`);
-console.log(`  cited     : ${(tally.cited / n).toFixed(2)}`);
-console.log(`  drives    : ${(tally.drives / n).toFixed(2)}`);
-console.log(`  boats     : ${(tally.boats / n).toFixed(2)}`);
-console.log(`  helilifts : ${(tally.helilifts / n).toFixed(2)}`);
-console.log(`  gear buys : ${(tally.gear / n).toFixed(2)}`);
-console.log(`  winner VP : ${avg(winScores).toFixed(1)}  (spread ${avg(spreads).toFixed(1)})`);
+console.log(`  publishes    : ${(tally.publishes / n).toFixed(2)}`);
+console.log(`  car drives   : ${(tally.drives / n).toFixed(2)}`);
+console.log(`  🛥 drives    : ${(tally.motorboatDrives / n).toFixed(2)}`);
+console.log(`  🛶 runs      : ${(tally.boatRuns / n).toFixed(2)}`);
+console.log(`  🛶 steps     : ${(tally.canoeSteps / n).toFixed(2)}`);
+console.log(`  helilifts    : ${(tally.helilifts / n).toFixed(2)}`);
+console.log(`  gear buys    : ${(tally.gear / n).toFixed(2)}`);
+console.log(`  deposits     : ${(tally.deposits / n).toFixed(2)}`);
+console.log(`  camp deploys : ${(tally.deploys / n).toFixed(2)}`);
+console.log(`  winner VP    : ${avg(winScores).toFixed(1)}  (spread ${avg(spreads).toFixed(1)})`);

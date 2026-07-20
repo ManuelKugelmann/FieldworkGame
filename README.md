@@ -4,7 +4,9 @@ A **serverless** (static, GitHub Pages) digital implementation of the board game
 *Expedition: Verdant Prime*, built on [boardgame.io](https://boardgame.io). One
 rules codebase (`src/game.ts`) drives the UI, a real-engine smoke test, and
 headless balance sweeps. See [`game_design.md`](./game_design.md) for the design
-intent and [`CLAUDE.md`](./CLAUDE.md) for the build/verify workflow.
+intent, [`MANUAL.md`](./MANUAL.md) for the player manual, [`parts_list.md`](./parts_list.md)
+for a physical-edition component list, and [`CLAUDE.md`](./CLAUDE.md) for the
+build/verify workflow.
 
 ## ▶ Play
 

@@ -82,11 +82,12 @@ const canMove = (map: Tile[], a: number, b: number) => {           // FOOT graph
 const cost = (map: Tile[], a: number, b: number) => onPath(map, a, b) ? 0.5 : 1;  // path/road edge = 0.5 AP; any other (regular) tile = 1 AP
 const canBoat = (map: Tile[], a: number, b: number) => {           // BOAT graph (player carrying the boat): water + brooks, and still walks dry land
   if (onBlocked(map, a, b) || isVoid(map[a]) || isVoid(map[b])) return false;
-  if (map[a].bridge || map[b].bridge) return onPath(map, a, b);
-  return true;                                                     // land↔land, land↔water, water↔water
+  if (map[a].terrain === 'water' && map[b].terrain === 'water') return true;   // open channel: a boat passes UNDER bridges (a washed-out bridge must never trap a boater on the river)
+  if (map[a].bridge || map[b].bridge) return onPath(map, a, b);    // climbing between a bridge deck and LAND still needs the crossing edge
+  return true;                                                     // land↔land, land↔water
 };
-const boatCost = (map: Tile[], a: number, b: number) =>             // by canoe: river/brook tile = 0.25 AP; otherwise foot cost (0.5 path / 1 regular)
-  (plainRiver(map[a]) || plainRiver(map[b]) || (map[a].smallRivers & dirBit(a, b))) ? 0.25 : (onPath(map, a, b) ? 0.5 : 1);
+const boatCost = (map: Tile[], a: number, b: number) =>             // by canoe: channel (incl. under bridges) / embark / brook = 0.25 AP; otherwise foot cost (0.5 path / 1 regular)
+  ((map[a].terrain === 'water' && map[b].terrain === 'water') || plainRiver(map[a]) || plainRiver(map[b]) || (map[a].smallRivers & dirBit(a, b))) ? 0.25 : (onPath(map, a, b) ? 0.5 : 1);
 export const apCost = (G: GState, from: number, to: number, boat: boolean) => (boat ? boatCost : cost)(G.map, from, to);  // AP for a foot/boat step (UI cost hint)
 // ---- generic link traversal: a vehicle rides ONE edge kind up to N steps/AP. roads→car, river channel→boat — same code, different `k`. ----
 function linkReach(map: Tile[], from: number, maxSteps: number, k: EdgeKind): number[] {   // cells within maxSteps along link `k`
@@ -643,10 +644,11 @@ const catalogue: Move<GState> = ({ G, ctx, random }, find: number) => {
   if (G.epilogue || p.ap < 1 || handFull(p) || !tile.revealed || find < 0 || find >= tile.finds.length) return INVALID_MOVE;  // a full specimen hand blocks collecting more — publish to clear it
   p.ap -= 1;
   const d = tile.finds[find], tag = `${d.type}${d.color}`, dc = catDC(d.color);   // higher-colour finds are harder to catalogue
-  const roll = random.D6() + random.D6() + gearBonus(p.gear, d.type) + (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0);   // gear + specialist bonus (role only for its discipline)
+  const d1 = random.D6(), d2 = random.D6();
+  const roll = d1 + d2 + gearBonus(p.gear, d.type) + (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0);   // gear + specialist bonus (role only for its discipline)
   if (roll >= dc) { tile.finds.splice(find, 1); p.samples.push(d); G.log.push(`catalogue ${tag} ${roll}/${dc} ✓ collected`); }
-  else if (roll >= dc - 2) G.log.push(`catalogue ${tag} ${roll}/${dc} ◦ stayed`);   // a near miss (within 2) leaves the find for another attempt — fewer rolls destroy it
-  else { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // fauna flees, the rest is destroyed
+  else if (d1 === d2) { tile.finds.splice(find, 1); G.log.push(`catalogue ${tag} ${roll}/${dc} ✗ ${d.type === 'zoo' ? 'fled' : 'destroyed'}`); }   // a failing PAIR = a botched dig: the find is lost (fauna flees) — the only way an attempt destroys it. Gear helps twice: it clears the DC and pushes pairs over it.
+  else G.log.push(`catalogue ${tag} ${roll}/${dc} ◦ stayed`);   // any other miss just leaves the find on the tile — try again
 };
 
 const publish: Move<GState> = ({ G, ctx }, patternName: string) => {  // research from the SHARED community pool at this research site (or the lab pool in the epilogue)
@@ -735,22 +737,33 @@ function reachGoals(G: GState, from: number, boat: boolean, goal: (t: Tile) => b
 const manhattan = (a: number, b: number) => Math.abs(((a / N) | 0) - ((b / N) | 0)) + Math.abs((a % N) - (b % N));
 const goalCells = (G: GState, goal: (t: Tile) => boolean) => { const a: number[] = []; for (let i = 0; i < N * N; i++) if (goal(G.map[i])) a.push(i); return a; };
 const nearestDist = (cells: number[], from: number) => cells.reduce((m, c) => Math.min(m, manhattan(from, c)), Infinity);
-// car: board a co-located idle car / drive to the road cell nearest the goal / dismount once roads stop helping
-function carStep(G: GState, ctx: any, goals: number[]): { move: string; args: unknown[] } | null {
+// vehicles: board a co-located idle car (or hop onto an adjacent moored motorboat) / drive its network to the cell nearest the goal / dismount once the network stops helping
+function vehicleStep(G: GState, ctx: any, goals: number[]): { move: string; args: unknown[] } | null {
   const p = G.players[ctx.currentPlayer];
-  const myCar = G.vehicles.find(v => v.driver === ctx.currentPlayer && v.kind === 'car');   // the heuristic only drives ground cars (motorboats are a human tool)
-  if (myCar) {                                                          // driving → ALWAYS drive or leave (never fall through to a foot move while behind the wheel)
-    if (p.ap <= 0 || !goals.length) return { move: 'leave', args: [] };   // out of AP or nothing to chase → step out so foot moves are possible
-    const here = nearestDist(goals, p.pos);
-    let best = -1, bd = here;
-    for (const c of roadReach(G.map, myCar.pos, Math.floor(p.ap * CAR_STEPS))) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
-    return best >= 0 ? { move: 'drive', args: [best] } : { move: 'leave', args: [] };
+  const netReach = (v: Vehicle, from: number, steps: number) => (v.kind === 'motorboat' ? riverReach : roadReach)(G.map, from, steps);
+  const vSteps = (v: Vehicle) => v.kind === 'motorboat' ? MOTORBOAT_STEPS : CAR_STEPS;
+  const mine = myVehicle(G, ctx.currentPlayer);
+  if (mine) {                                                          // driving → ALWAYS drive or leave (never fall through to a foot move while behind the wheel)
+    if (p.ap > 0 && goals.length) {
+      const here = nearestDist(goals, p.pos);
+      let best = -1, bd = here;
+      for (const c of netReach(mine, mine.pos, Math.floor(p.ap * vSteps(mine)))) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
+      if (best >= 0) return { move: 'drive', args: [best] };
+    }
+    if (mine.kind === 'motorboat' && p.ap > 0 && !nbrs(p.pos).some(j => isLandT(G.map[j]) && !onBlocked(G.map, p.pos, j))) {   // mid-channel with no bank to dock on (leave would be INVALID) → drive to the nearest dockable channel tile
+      const cand = netReach(mine, mine.pos, Math.floor(p.ap * vSteps(mine))).filter(c => nbrs(c).some(j => isLandT(G.map[j]) && !onBlocked(G.map, c, j)));
+      if (cand.length) return { move: 'drive', args: [cand.sort((x, y) => nearestDist(goals, x) - nearestDist(goals, y))[0]] };
+    }
+    return { move: 'leave', args: [] };   // out of AP / nothing closer on the network → step out (a motorboat leave docks ashore)
   }
-  if (!goals.length || p.ap < 1) return null;
+  if (!goals.length || p.ap < 1 || p.money < BOARD_COST) return null;
   const here = nearestDist(goals, p.pos);
-  if (here < 3) return null;   // on foot: only bother boarding when the goal is far enough that roads save real distance
-  const vi = p.money >= BOARD_COST ? G.vehicles.findIndex(v => v.pos === p.pos && v.driver === null && v.kind === 'car') : -1;   // parked car underfoot → board if roads lead closer (and the fee is affordable)
-  if (vi >= 0 && roadReach(G.map, G.vehicles[vi].pos, CAR_STEPS).some(c => nearestDist(goals, c) < here)) return { move: 'board', args: [vi] };
+  if (here < 3) return null;   // on foot: only bother boarding when the goal is far enough that the network saves real distance
+  const vi = G.vehicles.findIndex(v => v.driver === null && (v.pos === p.pos || (v.kind === 'motorboat' && nbrs(p.pos).includes(v.pos))));   // parked car underfoot, or a moored motorboat off this bank
+  if (vi >= 0) {
+    const v = G.vehicles[vi], need = v.kind === 'motorboat' ? here - 1 : here;   // a motorboat ride must gain ≥2 tiles — crossing the river for a marginal gain strands you on the far bank
+    if (netReach(v, v.pos, vSteps(v)).some(c => nearestDist(goals, c) < need)) return { move: 'board', args: [vi] };
+  }
   return null;
 }
 // the bot ignores cheap PLAIN pairs (one axis only) — its minimum target is a colour+symbol pair (both axes pinned)
@@ -762,18 +775,30 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   const pool = pubPool(G, p);
   if (pool && p.pubTurn !== ctx.turn) { const avail = pool.concat(p.samples);   // ≤1 publish/turn; publish proportional to payout: the most valuable assemblable combo (ignoring cheap plain pairs)
     for (const pat of [...G.goals].sort((a, b) => b.prestige - a.prestige)) if (botPursue(pat) && assemble(G, pat.id, avail, [])) return { move: 'publish', args: [pat.id] }; }
+  if (pool && !G.epilogue && handFull(p)) {   // full hand at a research site with nothing publishable → deposit the least-valuable specimen (it joins the pool your next publish draws from anyway) to reopen catalogue slots
+    let wi = 0, wv = Infinity;
+    p.samples.forEach((d, i) => { const v = findValue(G, p, cit, d); if (v < wv) { wv = v; wi = i; } });
+    return { move: 'discard', args: [wi] };
+  }
   if (G.epilogue) return { event: 'endTurn' };   // lab: only publishing
-  if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // invest spare money in gear: best affordable generic kit
+  if (isMarket(tile) && p.gear.length < GEAR_MAX) {   // invest spare money in gear: a field kit for your own discipline first — the cheapest navy unlock (+3 field +3 role → DC 13 needs a 7) — then the best affordable generic kit
+    const spec = ROLE_DISC[p.role];
+    if (!p.gear.some(g => g.kind === 'field' && g.field === spec) && p.money >= GEAR_PRICE.field + 4) return { move: 'buy', args: ['field', spec] };
     const buyable = (['g3', 'g2', 'g1'] as GearKind[]).find(k => p.money >= GEAR_PRICE[k] + 4);
     if (buyable) return { move: 'buy', args: [buyable] };
   }
-  if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forageTarget) > reachGoals(G, p.pos, false, forageTarget))
+  const canTry = (d: Discovery) => p2d6ge(catDC(d.color) - gearBonus(p.gear, d.type) - (ROLE_DISC[p.role] === d.type ? ROLE_BONUS : 0)) > 0;   // the roll CAN succeed with this bot's current bonuses
+  const forage = (t: Tile) => t.finds.length > 0 ? t.finds.some(canTry) : (!t.revealed && t.richness > 0);   // forageTarget, but a revealed find only counts if this bot can actually catalogue it (never trek to a 0% roll)
+  if (!p.boat && tile.equipment.some(e => e.kind === 'boat') && reachGoals(G, p.pos, true, forage) > reachGoals(G, p.pos, false, forage))
     return { move: 'pickup', args: ['boat'] };   // grab the shared boat only when water is actually fencing off forage
-  if (p.ap >= 1 && tile.finds.length && !handFull(p)) {   // catalogue the find that best builds toward a HIGH-PAYOUT combo (value-weighted, not just any completion) — and, early, lean on your specialty
+  if (p.ap >= 1 && tile.finds.length && !handFull(p)) {   // catalogue the find that best builds toward a HIGH-PAYOUT combo, weighted by the odds of actually making the roll — and, early, lean on your specialty
     const myDisc = ROLE_DISC[p.role], early = p.samples.length < 4 ? 4 : 1;   // focus own discipline early (where the +3 pays off), fade later
-    let bestI = 0, bestScore = -1;
+    let bestI = -1, bestScore = 0;
     for (let i = 0; i < tile.finds.length; i++) {
-      const trial = [...p.samples, tile.finds[i]];
+      const d = tile.finds[i];
+      const odds = p2d6ge(catDC(d.color) - gearBonus(p.gear, d.type) - (d.type === myDisc ? ROLE_BONUS : 0));
+      if (odds <= 0) continue;   // NEVER attempt a roll that cannot succeed — it only destroys the find (buy gear first, then come back)
+      const trial = [...p.samples, d];
       let goal = 0;
       for (const g of G.goals) {   // value of progress toward g = its prestige scaled by completion + a completion bonus → build valuable hands; plain pairs are ignored (min target = colour+symbol pair)
         if (!botPursue(g)) continue;
@@ -781,10 +806,10 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
         const have = r.slots.filter(s => s.state === 'have').length, need = g.parts.reduce((s, pt) => s + pt.count, 0);
         goal = Math.max(goal, g.prestige * (have / need) + (r.ok ? g.prestige : 0));
       }
-      const score = goal + (tile.finds[i].type === myDisc ? early : 0);   // prefer your specialty (more so while your hand is still small)
+      const score = (goal + (d.type === myDisc ? early : 0) + 0.5) * odds;   // combo value × success odds; the +0.5 keeps any makeable find worth an attempt (skipping hard cards starves the high-value combos)
       if (score > bestScore) { bestScore = score; bestI = i; }
     }
-    return { move: 'catalogue', args: [bestI] };
+    if (bestI >= 0) return { move: 'catalogue', args: [bestI] };   // no makeable roll here → fall through and forage elsewhere
   }
   const variant = BOTCFG.variant[+ctx.currentPlayer] || '';   // strategy variant (head-to-head exploration only)
   const minPub = (variant === 'greedy' || variant === 'ev') ? 1 : 3;   // DEFAULT = hold (build ≥3-prestige before publishing). 'greedy'/'ev' publish any combo (ev skips un-catalogueable finds, so it needs to bootstrap money→gear)
@@ -792,22 +817,41 @@ export function botAction(G: GState, ctx: any, rand: () => number): { move?: str
   if (hasHand && p.camp && isLandT(tile) && !tile.hotspot && nearestDist(goalCells(G, isResearch), p.pos) > 4)
     return { move: 'deploy', args: [] };   // far from any base with a hand to publish → plant your forward research camp here and publish on the spot instead of trekking back
   const goalPred = hasHand ? isResearch
-    : variant === 'ev' ? ((t: Tile) => t.finds.length ? tileForageValue(G, p, cit, t) > 0 : forageTarget(t))   // 'ev' goal set (for car / helilift reach): worthwhile revealed finds + un-entered rich tiles. The foot step itself uses evStep below (EV-per-AP, known-preferred), not nearest.
-    : (variant !== 'biome' ? forageTarget : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
+    : variant === 'ev' ? ((t: Tile) => t.finds.length ? tileForageValue(G, p, cit, t) > 0 : forage(t))   // 'ev' goal set (for car / helilift reach): worthwhile revealed finds + un-entered rich tiles. The foot step itself uses evStep below (EV-per-AP, known-preferred), not nearest.
+    : (variant !== 'biome' ? forage : (() => {   // 'biome': nudge forage toward the card that finishes your best started combo
     let nd: DType | undefined, nc: number | undefined, bestV = 0;
     for (const g of G.goals) { if (!botPursue(g)) continue; const r = evalGoal(g, p.samples, cit);
       const have = r.slots.filter(s => s.state === 'have').length, need = g.parts.reduce((s, pt) => s + pt.count, 0);
       if (have > 0 && have < need) { const v = g.prestige * have / need; if (v > bestV) { bestV = v; const m = r.slots.find(s => s.state !== 'have'); nd = m?.type; nc = m?.color; } } }
-    if (bestV === 0) return forageTarget;
-    const rich = (t: Tile) => forageTarget(t) && !!WEIGHTS[t.terrain] && (nd === undefined || WEIGHTS[t.terrain]![nd] >= 3) && (nc === undefined || BIOME_COLOR[t.terrain] === nc);
-    return stepToward(G, p.pos, rich, p.boat) >= 0 ? rich : forageTarget;
+    if (bestV === 0) return forage;
+    const rich = (t: Tile) => forage(t) && !!WEIGHTS[t.terrain] && (nd === undefined || WEIGHTS[t.terrain]![nd] >= 3) && (nc === undefined || BIOME_COLOR[t.terrain] === nc);
+    return stepToward(G, p.pos, rich, p.boat) >= 0 ? rich : forage;
   })());
   if (!(hasHand && isResearch(tile))) {
     const goals = goalCells(G, goalPred);
-    const cs = carStep(G, ctx, goals); if (cs) return cs;                                   // car: zip along roads toward the goal
+    const cs = vehicleStep(G, ctx, goals); if (cs) return cs;                               // vehicles: zip along roads (car) or the river channel (motorboat) toward the goal
+    if (p.boat && p.ap > 0 && goals.length && !myVehicle(G, ctx.currentPlayer)) {           // canoe on the channel: a fast boat-run that lands ≥2 tiles closer beats stepping tile by tile
+      const here = nearestDist(goals, p.pos);
+      let best = -1, bd = here - 1;                                                        // accept only an improvement of ≥2 tiles (same AP rate as stepping — the run is for range, not price)
+      for (const c of riverReach(G.map, p.pos, Math.floor(p.ap * BOAT_STEPS))) { const d = nearestDist(goals, c); if (d < bd) { bd = d; best = c; } }
+      if (best >= 0) return { move: 'boatRun', args: [best] };
+    }
     const nx = (variant === 'ev' && !hasHand) ? evStep(G, p, cit, p.boat) : stepToward(G, p.pos, goalPred, p.boat);   // 'ev': go to the best EV-per-AP tile (known-preferred); others: nearest goal tile (stable)
     if (nx >= 0) { if (p.ap >= (p.boat ? boatCost : cost)(G.map, p.pos, nx)) return { move: 'move', args: [nx] }; }   // reachable — step now, else wait for AP next turn
-    else if (hasHand && p.ap >= 1 && p.pos !== G.base) return { move: 'helilift', args: [] };  // genuinely no hub reachable → fly home
+    else if (hasHand && p.ap >= 1 && p.pos !== G.base) {   // no research site reachable on this graph — stranded (usually on the river's far bank)
+      if (!p.boat) {                                        // before burning a helilift: fetch a reachable idle boat and ride/carry it across
+        if (tile.equipment.some(e => e.kind === 'boat')) return { move: 'pickup', args: ['boat'] };   // a cached canoe underfoot → take it (skip the forage-count gate)
+        const mvi = p.money >= BOARD_COST ? G.vehicles.findIndex(v => v.kind === 'motorboat' && v.driver === null && (v.pos === p.pos || nbrs(p.pos).includes(v.pos))) : -1;
+        if (mvi >= 0) return { move: 'board', args: [mvi] };   // a moored motorboat off this bank → board it; the ride home crosses the river
+        const boatAt = new Set<Tile>();                        // walk to the nearest fetchable boat: any bank tile beside an idle motorboat, or a tile holding a dropped canoe
+        G.vehicles.forEach(v => { if (v.kind === 'motorboat' && v.driver === null) nbrs(v.pos).forEach(j => { if (isLandT(G.map[j]) && !onBlocked(G.map, v.pos, j)) boatAt.add(G.map[j]); }); });
+        G.map.forEach(t => { if (t.equipment.some(e => e.kind === 'boat')) boatAt.add(t); });
+        const bx = stepToward(G, p.pos, t => boatAt.has(t), false);
+        if (bx >= 0 && p.ap >= cost(G.map, p.pos, bx)) return { move: 'move', args: [bx] };
+        if (bx >= 0) return { event: 'endTurn' };              // a boat is walkable but this turn's AP is spent — wait, don't fly
+      }
+      return { move: 'helilift', args: [] };                   // genuinely nothing reachable → fly home
+    }
   }
   if (myVehicle(G, ctx.currentPlayer)) return { move: 'leave', args: [] };                   // still driving with nothing better → step out (never foot-move behind the wheel)
   const can = p.boat ? canBoat : canMove, wt = p.boat ? boatCost : cost;                    // fallback: any affordable step (don't stall)
@@ -894,6 +938,8 @@ function applyEvent(G: GState, id: string, random: any) {
       const { i } = br[random.Die(br.length) - 1];
       for (const j of nbrs(i)) { const rev = dirBit(j, i); G.map[j].roads &= ~rev; G.map[j].paths &= ~rev; }
       G.map[i].roads = 0; G.map[i].paths = 0;                         // no edge to board → crossing unusable
+      const bank = nbrs(i).find(j => isLandT(G.map[j]) && !onBlocked(G.map, i, j));   // anyone standing on the bridge is washed ashore (never trap a walker mid-river)
+      if (bank !== undefined) for (const pl of Object.values(G.players)) if (pl.pos === i && !pl.boat) pl.pos = bank;
     }
   } else if (id === 'monsoon') G.monsoon += 1;
   G.log.push(`event:${id}${id === 'monsoon' ? ` ⛈${G.monsoon}/${MONSOON_END}` : ''}`);
@@ -953,7 +999,7 @@ export const Expedition: Game<GState> = {
         p.ap = 1;   // exactly enough AP for ONE publish this lab turn
       } else {
         const round = Math.floor((ctx.turn - 1) / ctx.numPlayers), pos = (ctx.turn - 1) % ctx.numPlayers;
-        const base = (BAL.round0Ramp && round === 0) ? Math.max(1, START_AP - Math.round((ctx.numPlayers - 1 - pos) * 2 / 3)) : START_AP;   // round-1 ramp, integer (4p: 2/3/3/4 by play order) — opener handicapped most, fading to a full turn for the last; counters the round-0 first-mover edge
+        const base = (BAL.round0Ramp && round === 0 && ctx.numPlayers > 1) ? 2 + Math.round(pos * (START_AP - 2) / (ctx.numPlayers - 1)) : START_AP;   // round-1 ramp, linear 2→START_AP by play order (2p 2/4 · 3p 2/3/4 · 4p 2/3/3/4) — opener handicapped most, fading to a full turn for the last; counters the round-0 first-mover edge
         p.ap = base + (G.roundEvent === 'tailwind' ? 1 : 0);
       }
     },
